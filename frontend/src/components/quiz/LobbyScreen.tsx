@@ -13,22 +13,10 @@ export default function LobbyScreen() {
 
       <div style={{ position:'relative', zIndex:1, width:'100%', maxWidth:360 }}>
 
-        {/* Live chip */}
-        <motion.div initial={{ opacity:0, y:-12 }} animate={{ opacity:1, y:0 }}
-          style={{ display:'flex', justifyContent:'center', marginBottom:36 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:100,
-            background:'rgba(0,212,180,.1)', border:'1px solid rgba(0,212,180,.22)', color:'#00D4B4',
-            fontFamily:'var(--font-jb)', fontSize:11, fontWeight:500 }}>
-            <motion.div animate={{ opacity:[1,.2,1] }} transition={{ duration:1.4, repeat:Infinity }}
-              style={{ width:7, height:7, borderRadius:'50%', background:'#00D4B4' }} />
-            Connected · Waiting for host
-          </div>
-        </motion.div>
-
         {/* Theme */}
-        <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ delay:.1 }}
+        <motion.div initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }}
           style={{ textAlign:'center', marginBottom:36 }}>
-          <div style={{ fontSize:10, letterSpacing:'.18em', textTransform:'uppercase', color:'#6B6B80', fontFamily:'var(--font-jb)', marginBottom:10 }}>Today's Quiz</div>
+          <div style={{ fontSize:10, letterSpacing:'.18em', textTransform:'uppercase', color:'#6B6B80', fontFamily:'var(--font-jb)', marginBottom:10 }}>Today's Theme</div>
           <h1 className="font-display" style={{ fontSize:28, fontWeight:700, color:'#F0F0F8', letterSpacing:'-.5px', lineHeight:1.2 }}>
             {quizTheme || 'GenLayer Quiz'}
           </h1>
@@ -36,7 +24,7 @@ export default function LobbyScreen() {
 
         {/* Player orb */}
         <motion.div initial={{ opacity:0, scale:.75 }} animate={{ opacity:1, scale:1 }}
-          transition={{ delay:.15, type:'spring', stiffness:180, damping:20 }}
+          transition={{ delay:.1, type:'spring', stiffness:180, damping:20 }}
           style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:36 }}>
           <div style={{ position:'relative', marginBottom:16 }}>
             {[0,1,2].map(i => (
@@ -70,7 +58,7 @@ export default function LobbyScreen() {
         </motion.div>
 
         {/* Info card */}
-        <motion.div initial={{ opacity:0, y:18 }} animate={{ opacity:1, y:0 }} transition={{ delay:.25 }}
+        <motion.div initial={{ opacity:0, y:18 }} animate={{ opacity:1, y:0 }} transition={{ delay:.2 }}
           style={{ borderRadius:20, padding:20, marginBottom:24, background:'#18181F', border:'1px solid #25252E', boxShadow:'0 4px 24px rgba(0,0,0,.45)' }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             {[
@@ -92,7 +80,7 @@ export default function LobbyScreen() {
         </motion.div>
 
         {/* Waiting */}
-        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:.35 }}
+        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:.3 }}
           style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
           <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:13, color:'#9898AA' }}>
             <Clock size={13} /> Waiting for the host to start…
