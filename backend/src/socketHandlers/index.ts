@@ -4,7 +4,7 @@ import {
   getQuiz, setQuiz, getPlayer, setPlayer, getAllPlayers,
   removePlayer, setSession, getSession, deleteSession, updateScore, redis,
 } from '../redisClient';
-import { startQuizEngine, handleAnswer, buildLeaderboard, setIoRef } from '../quizEngine';
+import { startQuizEngine, handleAnswer, buildLeaderboard, setIoRef, getRestoreState } from '../quizEngine';
 import { Player, Quiz } from '../types';
 
 const PWD = process.env.ADMIN_PASSWORD || 'Genlayerfrenzy26';
@@ -30,8 +30,16 @@ export function register(io: Server, socket: Socket) {
   socket.on('admin_create_quiz', async (data: any, cb: Function) => {
     if (data.password !== PWD) return cb({ success: false, error: 'Invalid password' });
     const code = genCode();
+
+    // Answer duration (seconds): admin-configured, clamped to a sane range.
+    // Falls back to 15s if not provided or invalid.
+    let answerDuration = Number(data.answerDuration);
+    if (!Number.isFinite(answerDuration) || answerDuration <= 0) answerDuration = 15;
+    answerDuration = Math.max(5, Math.min(60, Math.round(answerDuration)));
+
     const quiz: Quiz = {
       id: uuid(), code, theme: data.theme,
+      description: (data.description || '').trim().slice(0, 300),
       questions: data.questions.map((q: any) => ({
         id: uuid(),
         text: q.text || '',
@@ -39,7 +47,7 @@ export function register(io: Server, socket: Socket) {
         options: q.options,
         correctIndices: Array.isArray(q.correctIndices) ? q.correctIndices : [q.correctIndex ?? 0],
         isMultipleChoice: Array.isArray(q.correctIndices) ? q.correctIndices.length > 1 : false,
-        timeLimit: 15,
+        timeLimit: answerDuration,
       })),
       adminSocketId: socket.id,
       status: 'waiting',
@@ -152,7 +160,7 @@ export function register(io: Server, socket: Socket) {
           socket.join(code);
           const all   = await getAllPlayers(code);
           const count = all.length;
-          cb({ success: true, quizTheme: quiz.theme, playerCount: count, playerId: existing.id, reconnected: true });
+          cb({ success: true, quizTheme: quiz.theme, quizDescription: quiz.description || '', playerCount: count, playerId: existing.id, reconnected: true });
           return;
         }
       }
@@ -179,7 +187,7 @@ export function register(io: Server, socket: Socket) {
       players: all.map((p: Player) => ({ id: p.id, username: p.username, score: p.score })),
     });
     io.to(code).emit('lobby_update', { playerCount: count });
-    cb({ success: true, quizTheme: quiz.theme, playerCount: count, playerId });
+    cb({ success: true, quizTheme: quiz.theme, quizDescription: quiz.description || '', playerCount: count, playerId });
   });
 
   // ── Player: restore session after reconnect ────────────────────────────────
@@ -191,20 +199,18 @@ export function register(io: Server, socket: Socket) {
     const player = await getPlayer(code, playerId);
     if (!player) return cb({ success: false, error: 'Player not found' });
 
-    // Update socket ID
+    // Update socket ID so future emits reach this connection
     player.socketId = socket.id;
     await setPlayer(code, playerId, player);
     await setSession(socket.id, { role: 'player', code, playerId, username: player.username });
     socket.join(code);
 
-    const all = await getAllPlayers(code);
-    cb({
-      success: true,
-      quizTheme: quiz.theme,
-      quizStatus: quiz.status,
-      playerCount: all.length,
-      myScore: player.score,
-    });
+    // Build full restore payload — current question, phase, timeLeft,
+    // answer result / correct answers / leaderboard depending on phase
+    const state = await getRestoreState(code, playerId);
+    if (!state) return cb({ success: false, error: 'Could not restore state' });
+
+    cb({ success: true, ...state });
   });
 
   // ── Player: submit answer ──────────────────────────────────────────────────
