@@ -7,6 +7,7 @@ import LandingScreen      from '@/components/quiz/LandingScreen';
 import LobbyScreen        from '@/components/quiz/LobbyScreen';
 import QuestionScreen     from '@/components/quiz/QuestionScreen';
 import FeedbackScreen     from '@/components/quiz/FeedbackScreen';
+import CorrectAnswerScreen from '@/components/quiz/CorrectAnswerScreen';
 import LeaderboardScreen  from '@/components/leaderboard/LeaderboardScreen';
 import AchievementsScreen from '@/components/achievements/AchievementsScreen';
 import ToastStack         from '@/components/ui/ToastStack';
@@ -33,6 +34,7 @@ export default function Home() {
       {phase === 'lobby'                     && <LobbyScreen />}
       {(phase==='question_only'||phase==='question_options') && <QuestionScreen />}
       {phase === 'answer_feedback'           && <FeedbackScreen />}
+      {phase === 'correct_answer'            && <CorrectAnswerScreen />}
       {phase === 'intermediate_leaderboard'  && <LeaderboardScreen isFinal={false} />}
       {phase === 'achievements'              && <AchievementsScreen />}
       {phase === 'final_leaderboard'         && <LeaderboardScreen isFinal={true} />}

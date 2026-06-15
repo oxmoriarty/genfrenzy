@@ -90,6 +90,8 @@ export default function AdminPage() {
   const [loginErr,     setLoginErr]    = useState('');
   const [loginLoading, setLoginLoading]= useState(false);
   const [theme,        setTheme]       = useState('');
+  const [description,  setDescription] = useState('');
+  const [answerDuration, setAnswerDuration] = useState(15);
   const [questions,    setQuestions]   = useState<QInput[]>([BLANK_Q()]);
   const [createErr,    setCreateErr]   = useState('');
   const [creating,     setCreating]    = useState(false);
@@ -211,6 +213,9 @@ export default function AdminPage() {
   // ── Create quiz ────────────────────────────────────────────────────────────
   const create = () => {
     if (!theme.trim()) { setCreateErr('Enter a quiz theme'); return; }
+    if (!Number.isFinite(answerDuration) || answerDuration < 5 || answerDuration > 60) {
+      setCreateErr('Answer time must be between 5 and 60 seconds'); return;
+    }
     if (questions.some(q => !q.text.trim() && !q.imageBase64)) {
       setCreateErr('Every question needs text or an image'); return;
     }
@@ -221,7 +226,7 @@ export default function AdminPage() {
       setCreateErr('Mark at least one correct answer per question'); return;
     }
     setCreating(true); setCreateErr('');
-    sk.emit('admin_create_quiz', { password, theme, questions }, (res: any) => {
+    sk.emit('admin_create_quiz', { password, theme, description, answerDuration, questions }, (res: any) => {
       setCreating(false);
       if (res.success) {
         setQuizCode(res.code);
@@ -356,7 +361,34 @@ export default function AdminPage() {
         <div style={{ ...card, padding:20 }}>
           <label style={{ display:'block', fontSize:10, letterSpacing:'.16em', textTransform:'uppercase', color:'#9898AA', fontFamily:'var(--font-jb)', marginBottom:10 }}>Quiz Theme</label>
           <input className="field" placeholder="e.g. GenLayer Fundamentals"
-            value={theme} onChange={e=>setTheme(e.target.value)}/>
+            value={theme} onChange={e=>setTheme(e.target.value)} style={{ marginBottom:16 }}/>
+
+          <label style={{ display:'block', fontSize:10, letterSpacing:'.16em', textTransform:'uppercase', color:'#9898AA', fontFamily:'var(--font-jb)', marginBottom:10 }}>
+            Description <span style={{ color:'#6B6B80', textTransform:'none', letterSpacing:'normal' }}>(optional · shown to players in the lobby)</span>
+          </label>
+          <textarea className="field" placeholder="A couple of sentences about what this quiz covers…"
+            value={description} onChange={e=>setDescription(e.target.value.slice(0,300))}
+            rows={3} maxLength={300}
+            style={{ resize:'vertical', minHeight:72, lineHeight:1.5, paddingTop:10, paddingBottom:10, marginBottom:6 }}/>
+          <div style={{ textAlign:'right', fontSize:10, color:'#6B6B80', fontFamily:'var(--font-jb)', marginBottom:16 }}>
+            {description.length}/300
+          </div>
+
+          <label style={{ display:'block', fontSize:10, letterSpacing:'.16em', textTransform:'uppercase', color:'#9898AA', fontFamily:'var(--font-jb)', marginBottom:10 }}>
+            Answer Time <span style={{ color:'#6B6B80', textTransform:'none', letterSpacing:'normal' }}>(seconds per question · 5–60)</span>
+          </label>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <input className="field" type="number" min={5} max={60} step={1}
+              value={answerDuration}
+              onChange={e=>{
+                const v = parseInt(e.target.value, 10);
+                setAnswerDuration(Number.isFinite(v) ? v : 0);
+              }}
+              style={{ maxWidth:100 }}/>
+            <span style={{ fontSize:12, color:'#6B6B80' }}>
+              seconds{answerDuration > 0 && answerDuration < 7 ? ' · question preview extends to 7s' : ''}
+            </span>
+          </div>
         </div>
         {/* Questions */}
         {questions.map((q, qi) => {

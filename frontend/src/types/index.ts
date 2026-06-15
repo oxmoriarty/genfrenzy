@@ -41,11 +41,12 @@ export interface Achievement {
 export interface Toast { id: string; message: string; type?: 'info'|'error'|'success'; }
 
 export interface GameState {
-  phase: 'landing'|'lobby'|'question_only'|'question_options'|'answer_feedback'|'intermediate_leaderboard'|'achievements'|'final_leaderboard';
+  phase: 'landing'|'lobby'|'question_only'|'question_options'|'answer_feedback'|'correct_answer'|'intermediate_leaderboard'|'achievements'|'final_leaderboard';
   playerId:          string|null;
   username:          string|null;
   quizCode:          string|null;
   quizTheme:         string|null;
+  quizDescription:   string|null;
   playerCount:       number;
   currentQuestion:   Question|null;
   currentOptions:    string[];
@@ -53,9 +54,11 @@ export interface GameState {
   questionIndex:     number;
   totalQuestions:    number;
   timeLeft:          number;
+  answerDuration:    number;        // total seconds allowed per question (admin-configured)
   hasAnswered:       boolean;
   selectedIndices:   number[];       // tracks multi-select choices
   answerResult:      AnswerResult|null;
+  revealCorrectIndices: number[];
   leaderboard:       LeaderboardEntry[];
   achievements:      Achievement[];
   myScore:           number;

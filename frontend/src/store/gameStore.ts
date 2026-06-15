@@ -1,10 +1,13 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { GameState, Achievement, AnswerResult, LeaderboardEntry, Question, Toast } from '@/types';
 
 interface Store extends GameState {
   clearQuestion(): void;
   setPhase(p: GameState['phase']): void;
-  setPlayerInfo(id: string, u: string, c: string, t: string): void;
+  setPlayerInfo(id: string, u: string, c: string, t: string, d?: string): void;
+  setQuizDescription(d: string | null): void;
+  setAnswerDuration(n: number): void;
   setPlayerCount(n: number): void;
   setCurrentQuestion(q: Question): void;
   setCurrentOptions(o: string[], isMulti: boolean): void;
@@ -13,6 +16,7 @@ interface Store extends GameState {
   toggleSelected(i: number): void;
   setSelectedIndices(arr: number[]): void;
   setAnswerResult(r: AnswerResult | null): void;
+  setRevealCorrectIndices(arr: number[]): void;
   setLeaderboard(l: LeaderboardEntry[]): void;
   setAchievements(a: Achievement[]): void;
   setMyScore(s: number): void;
@@ -26,61 +30,102 @@ interface Store extends GameState {
 const init: GameState = {
   phase: 'landing',
   playerId: null, username: null, quizCode: null, quizTheme: null,
+  quizDescription: null,
   playerCount: 0, currentQuestion: null, currentOptions: [],
   isMultipleChoice: false,
-  questionIndex: 0, totalQuestions: 0, timeLeft: 15,
+  questionIndex: 0, totalQuestions: 0, timeLeft: 15, answerDuration: 15,
   hasAnswered: false, selectedIndices: [], answerResult: null,
+  revealCorrectIndices: [],
   leaderboard: [], achievements: [],
   myScore: 0, myRank: 0, connected: false, toasts: [],
 };
 
-export const useGameStore = create<Store>((set, get) => ({
-  ...init,
+export const useGameStore = create<Store>()(
+  persist(
+    (set, get) => ({
+      ...init,
 
-  clearQuestion: () => set({
-    currentQuestion: null, currentOptions: [],
-    selectedIndices: [], hasAnswered: false, answerResult: null,
-  }),
+      clearQuestion: () => set({
+        currentQuestion: null, currentOptions: [],
+        selectedIndices: [], hasAnswered: false, answerResult: null,
+        revealCorrectIndices: [],
+      }),
 
-  setPhase:      p   => set({ phase: p }),
-  setPlayerInfo: (id, u, c, t) => set({ playerId: id, username: u, quizCode: c, quizTheme: t }),
-  setPlayerCount: n  => set({ playerCount: n }),
+      setPhase:      p   => set({ phase: p }),
+      setPlayerInfo: (id, u, c, t, d) => set({ playerId: id, username: u, quizCode: c, quizTheme: t, quizDescription: d ?? null }),
+      setQuizDescription: d => set({ quizDescription: d }),
+      setAnswerDuration:  n => set({ answerDuration: n }),
+      setPlayerCount: n  => set({ playerCount: n }),
 
-  setCurrentQuestion: q => set({
-    currentQuestion: q,
-    questionIndex:   q.questionIndex,
-    totalQuestions:  q.totalQuestions,
-    isMultipleChoice: q.isMultipleChoice,
-    hasAnswered: false,
-    answerResult: null,
-    selectedIndices: [],
-  }),
+      setCurrentQuestion: q => set({
+        currentQuestion: q,
+        questionIndex:   q.questionIndex,
+        totalQuestions:  q.totalQuestions,
+        isMultipleChoice: q.isMultipleChoice,
+        hasAnswered: false,
+        answerResult: null,
+        revealCorrectIndices: [],
+        selectedIndices: [],
+      }),
 
-  setCurrentOptions: (o, isMulti) => set({ currentOptions: o, isMultipleChoice: isMulti }),
-  setTimeLeft:    t  => set({ timeLeft: t }),
-  setHasAnswered: v  => set({ hasAnswered: v }),
+      setCurrentOptions: (o, isMulti) => set({ currentOptions: o, isMultipleChoice: isMulti }),
+      setTimeLeft:    t  => set({ timeLeft: t }),
+      setHasAnswered: v  => set({ hasAnswered: v }),
 
-  toggleSelected: i => set(s => ({
-    selectedIndices: s.selectedIndices.includes(i)
-      ? s.selectedIndices.filter(x => x !== i)
-      : [...s.selectedIndices, i],
-  })),
+      toggleSelected: i => set(s => ({
+        selectedIndices: s.selectedIndices.includes(i)
+          ? s.selectedIndices.filter(x => x !== i)
+          : [...s.selectedIndices, i],
+      })),
 
-  setSelectedIndices: arr => set({ selectedIndices: arr }),
-  setAnswerResult:    r   => set({ answerResult: r }),
-  setLeaderboard:     l   => set({ leaderboard: l }),
-  setAchievements:    a   => set({ achievements: a }),
-  setMyScore:         s   => set({ myScore: s }),
-  setMyRank:          r   => set({ myRank: r }),
-  setConnected:       v   => set({ connected: v }),
+      setSelectedIndices:     arr => set({ selectedIndices: arr }),
+      setAnswerResult:        r   => set({ answerResult: r }),
+      setRevealCorrectIndices: arr => set({ revealCorrectIndices: arr }),
+      setLeaderboard:         l   => set({ leaderboard: l }),
+      setAchievements:        a   => set({ achievements: a }),
+      setMyScore:             s   => set({ myScore: s }),
+      setMyRank:              r   => set({ myRank: r }),
+      setConnected:           v   => set({ connected: v }),
 
-  addToast: (msg, type = 'info') => {
-    const id = Math.random().toString(36).slice(2);
-    set(s => ({ toasts: [...s.toasts.slice(-3), { id, message: msg, type }] }));
-    setTimeout(() => get().removeToast(id), 3500);
-  },
+      addToast: (msg, type = 'info') => {
+        const id = Math.random().toString(36).slice(2);
+        set(s => ({ toasts: [...s.toasts.slice(-3), { id, message: msg, type }] }));
+        setTimeout(() => get().removeToast(id), 3500);
+      },
 
-  removeToast: id => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
+      removeToast: id => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
 
-  reset: () => set({ ...init, connected: get().connected }),
-}));
+      reset: () => set({ ...init, connected: get().connected }),
+    }),
+    {
+      name: 'gf_game_state',
+      storage: createJSONStorage(() => localStorage),
+      // Persist only what's needed to rebuild the UI on reload.
+      // Exclude toasts and connected (these should always start fresh).
+      partialize: (s) => ({
+        phase: s.phase,
+        playerId: s.playerId,
+        username: s.username,
+        quizCode: s.quizCode,
+        quizTheme: s.quizTheme,
+        quizDescription: s.quizDescription,
+        playerCount: s.playerCount,
+        currentQuestion: s.currentQuestion,
+        currentOptions: s.currentOptions,
+        isMultipleChoice: s.isMultipleChoice,
+        questionIndex: s.questionIndex,
+        totalQuestions: s.totalQuestions,
+        timeLeft: s.timeLeft,
+        answerDuration: s.answerDuration,
+        hasAnswered: s.hasAnswered,
+        selectedIndices: s.selectedIndices,
+        answerResult: s.answerResult,
+        revealCorrectIndices: s.revealCorrectIndices,
+        leaderboard: s.leaderboard,
+        achievements: s.achievements,
+        myScore: s.myScore,
+        myRank: s.myRank,
+      }),
+    }
+  )
+);

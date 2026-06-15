@@ -12,12 +12,11 @@ const OPTS = [
   { L:'D', c:'#00D4B4', g:'rgba(0,212,180,.32)',   bg:'rgba(0,212,180,.09)',  sel:'rgba(0,212,180,.2)'   },
 ];
 
-const TOTAL = 15; // seconds per question
 
 export default function QuestionScreen() {
   const {
     phase, currentQuestion, currentOptions, isMultipleChoice,
-    questionIndex, totalQuestions, timeLeft,
+    questionIndex, totalQuestions, timeLeft, answerDuration,
     hasAnswered, selectedIndices,
     setHasAnswered, toggleSelected, setSelectedIndices,
   } = useGameStore();
@@ -70,7 +69,7 @@ export default function QuestionScreen() {
   const urgent  = phase === 'question_options' && timeLeft <= 5;
   const warning = phase === 'question_options' && timeLeft > 5 && timeLeft <= 10;
   const tc  = urgent ? '#FF4D6A' : warning ? '#FFB547' : '#3B6EFF';
-  const pct = timeLeft / TOTAL;
+  const pct = timeLeft / (answerDuration || 15);
   const C   = 2 * Math.PI * 20;
 
   return (

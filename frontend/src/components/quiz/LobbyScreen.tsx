@@ -4,7 +4,7 @@ import { Users, Clock, Hash, User } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 
 export default function LobbyScreen() {
-  const { quizTheme, playerCount, username, quizCode } = useGameStore();
+  const { quizTheme, quizDescription, playerCount, username, quizCode } = useGameStore();
   return (
     <div style={{ position:'relative', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', overflow:'hidden', background:'#0A0A0F', padding:'24px' }}>
       <div className="mesh-bg" />
@@ -20,6 +20,13 @@ export default function LobbyScreen() {
           <h1 className="font-display" style={{ fontSize:28, fontWeight:700, color:'#F0F0F8', letterSpacing:'-.5px', lineHeight:1.2 }}>
             {quizTheme || 'GenLayer Quiz'}
           </h1>
+          {quizDescription && (
+            <motion.p initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay:.1 }}
+              style={{ fontSize:13, color:'#9898AA', lineHeight:1.6, marginTop:10,
+                maxWidth:300, marginLeft:'auto', marginRight:'auto' }}>
+              {quizDescription}
+            </motion.p>
+          )}
         </motion.div>
 
         {/* Player orb */}
