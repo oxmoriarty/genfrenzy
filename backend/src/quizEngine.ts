@@ -191,10 +191,14 @@ async function runQuestion(io: Server, code: string, qi: number) {
       answerDuration,
     });
 
-    // Head-start before timer ticks begin — gives clients time to render
-    // options and allows an instant answer to score full 1000 points
+    // Immediately show the full duration (e.g. "25") the moment options
+    // appear — before the countdown begins.
+    io.to(code).emit('timer_update', { timeLeft: answerDuration, questionIndex: qi });
+
+    // 1-second pause so players see the starting number before it moves.
     await new Promise(r => setTimeout(r, TIMER_DELAY));
 
+    // Countdown: 24, 23, 22 ... 1, 0
     let tl = answerDuration;
     const tick = setInterval(() => {
       tl = Math.max(0, tl - 1);
@@ -430,7 +434,7 @@ export async function getRestoreState(code: string, playerId: string) {
   }
 
   if (phase === 'answer_feedback' || phase === 'correct_answer') {
-    const result = player?.questionResults?.find(r => r.questionIndex === qi);
+    const result = player?.questionResults?.find((r: QuestionResult) => r.questionIndex === qi);
     const lb  = await buildLeaderboard(code);
     const me  = lb.find(e => e.playerId === playerId);
     return {

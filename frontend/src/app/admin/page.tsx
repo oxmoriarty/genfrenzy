@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Check, Play, Users, Hash, BarChart2,
   ChevronRight, AlertCircle, Loader2, Copy, Image as ImageIcon,
-  X, Download, CheckSquare,
+  X, Download, CheckSquare, LogOut,
 } from 'lucide-react';
 import { getSocket } from '@/lib/socket';
 
@@ -112,6 +112,17 @@ export default function AdminPage() {
   pwdRef.current  = quizPwd;
 
   const sk = getSocket();
+
+  const logout = () => {
+    localStorage.removeItem('gf_admin_session');
+    setPassword('');
+    setQuizCode('');
+    setQuizPwd('');
+    setPlayers([]);
+    setLb([]);
+    setStatus('waiting');
+    setView('login');
+  };
 
   // ── Restore admin session on mount (handles page refresh) ─────────────────
   useEffect(() => {
@@ -506,8 +517,17 @@ export default function AdminPage() {
       <div style={{ position:'relative', zIndex:1, background:'rgba(17,17,24,.97)', borderBottom:'1px solid #25252E', padding:'20px 24px' }}>
         <div style={{ maxWidth:960, margin:'0 auto', display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', gap:16 }}>
           <div>
-            <div style={{ marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
               <h1 className="font-display" style={{ fontSize:20, fontWeight:700, color:'#F0F0F8' }}>Admin Dashboard</h1>
+              <button onClick={logout}
+                style={{ display:'flex', alignItems:'center', gap:6, background:'none',
+                  border:'1px solid #25252E', borderRadius:9, padding:'6px 12px',
+                  cursor:'pointer', fontSize:12, fontWeight:500, color:'#6B6B80',
+                  transition:'color .15s, border-color .15s' }}
+                onMouseOver={e=>{ const el=e.currentTarget as HTMLElement; el.style.borderColor='rgba(255,77,106,.4)'; el.style.color='#FF4D6A'; }}
+                onMouseOut={e=>{ const el=e.currentTarget as HTMLElement; el.style.borderColor='#25252E'; el.style.color='#6B6B80'; }}>
+                <LogOut size={13}/> Logout
+              </button>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
               <span style={{ fontSize:11, color:'#6B6B80', fontFamily:'var(--font-jb)' }}>Code:</span>
