@@ -25,6 +25,7 @@ interface Store extends GameState {
   addToast(msg: string, type?: Toast['type']): void;
   removeToast(id: string): void;
   reset(): void;
+  clearAll(): void;  // resets state AND wipes the persisted localStorage snapshot
 }
 
 const init: GameState = {
@@ -96,6 +97,20 @@ export const useGameStore = create<Store>()(
       removeToast: id => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
 
       reset: () => set({ ...init, connected: get().connected }),
+
+      // Wipes BOTH the in-memory store and the persisted localStorage
+      // snapshot. Without this, a stale "achievements" phase with an old
+      // leaderboard could sit in localStorage forever and render on every
+      // future visit, since `reset()` alone only fixes in-memory state —
+      // the persist middleware would simply write the stale data right
+      // back on the next change, or worse, rehydrate it on the very next
+      // page load before any socket logic runs.
+      clearAll: () => {
+        set({ ...init, connected: get().connected });
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('gf_game_state');
+        }
+      },
     }),
     {
       name: 'gf_game_state',

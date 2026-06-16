@@ -348,7 +348,8 @@ export function setIoRef(io: Server) {
 async function endQuiz(io: Server, code: string) {
   const quiz = await getQuiz(code);
   if (!quiz) return;
-  quiz.status = 'ended';
+  quiz.status  = 'ended';
+  quiz.endedAt = Date.now();
   await setQuiz(code, quiz);
   const lb   = await buildLeaderboard(code);
   const achs = await computeAchievements(code);
@@ -363,7 +364,7 @@ async function endQuiz(io: Server, code: string) {
 // leaderboard (if in leaderboard phase).
 export async function getRestoreState(code: string, playerId: string) {
   const quiz: Quiz = await getQuiz(code);
-  if (!quiz) return null;
+  if (!quiz) return { quizStatus: 'stale' as const };
   const player = await getPlayer(code, playerId);
   const all    = await getAllPlayers(code);
 
@@ -378,6 +379,18 @@ export async function getRestoreState(code: string, playerId: string) {
   }
 
   if (quiz.status === 'ended') {
+    // Grace period: a player who returns shortly after the quiz ends should
+    // still see the final leaderboard (per spec — "if they got back a few
+    // seconds after the quiz ends"). Beyond that window, treat the session
+    // as stale so old results don't haunt future visits indefinitely.
+    const GRACE_MS = 10 * 60 * 1000; // 10 minutes
+    const endedAt  = quiz.endedAt || 0;
+    const withinGrace = endedAt > 0 && (Date.now() - endedAt) < GRACE_MS;
+
+    if (!withinGrace) {
+      return { quizStatus: 'stale' as const };
+    }
+
     const lb   = await buildLeaderboard(code);
     const achs = await computeAchievements(code);
     const me   = lb.find(e => e.playerId === playerId);

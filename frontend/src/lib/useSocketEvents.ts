@@ -12,34 +12,63 @@ export function useSocketEvents() {
   useEffect(() => {
     const sk = getSocket();
 
-    // Restore logic — runs whenever we (re)connect. Defined as a function so
-    // it can be called both from the 'connect' event AND immediately below
-    // if the socket already connected before this effect attached its
-    // listeners (socket.ts connects on module import, so on a page refresh
-    // the 'connect' event often fires before useSocketEvents mounts).
+    // ── Session validity check ────────────────────────────────────────────
+    // Runs on every connect (including the very first connect on a fresh
+    // page load). This is the single authority on whether the locally
+    // cached UI state (zustand's persisted `gf_game_state`) is still valid.
+    //
+    // Three cases:
+    //  1. No `gf_session` at all -> nothing to restore. If there's leftover
+    //     UI state from a previous, already-ended session (e.g. someone
+    //     closed the tab right after a quiz ended, gf_session was cleared,
+    //     but gf_game_state still shows the old leaderboard), wipe it so
+    //     the landing page renders instead of stale results.
+    //  2. `gf_session` exists -> ask the server to restore. If the server
+    //     says the session is stale (quiz/player record expired, or the
+    //     post-quiz grace period has passed), wipe everything and land on
+    //     the landing page. Otherwise, rebuild the UI from the server's
+    //     authoritative state.
     const tryRestore = () => {
       if (typeof window === 'undefined') return;
       const stored = localStorage.getItem('gf_session');
-      if (!stored) return;
+
+      if (!stored) {
+        // No active session pointer. Any leftover persisted UI state from
+        // a previous completed/abandoned session must not be shown.
+        if (ref.current.phase !== 'landing') {
+          ref.current.clearAll();
+        }
+        return;
+      }
+
       try {
         const sess = JSON.parse(stored);
-        if (sess.role === 'player' && sess.playerId && sess.code) {
-          sk.emit('player_restore', { code: sess.code, playerId: sess.playerId }, (res: any) => {
-            if (!res || !res.success) {
-              // Session no longer valid — go back to landing
-              clearSession();
-              ref.current.reset();
-              return;
-            }
-            applyRestoreState(ref.current, res);
-          });
+        if (sess.role !== 'player' || !sess.playerId || !sess.code) {
+          ref.current.clearAll();
+          return;
         }
-      } catch (_) {}
+
+        sk.emit('player_restore', { code: sess.code, playerId: sess.playerId }, (res: any) => {
+          if (!res || !res.success || res.quizStatus === 'stale') {
+            // Session is genuinely gone — clear the connection-session
+            // pointer AND the cached UI snapshot, then land on the landing
+            // page with a clean slate.
+            clearSession();
+            ref.current.clearAll();
+            return;
+          }
+          applyRestoreState(ref.current, res);
+        });
+      } catch (_) {
+        clearSession();
+        ref.current.clearAll();
+      }
     };
 
     // Socket may have already connected before this effect ran. Sync state
     // immediately to avoid a false "Reconnecting to server…" banner, and run
-    // the restore now since the 'connect' event below may never fire again.
+    // the restore/validity check now since the 'connect' event below may
+    // never fire again for an already-connected socket.
     if (sk.connected) {
       ref.current.setConnected(true);
       tryRestore();
@@ -125,6 +154,14 @@ export function useSocketEvents() {
       if (me) ref.current.setMyRank(me.rank);
       ref.current.setPhase('achievements');
       playSound('achievement');
+      // Connection-session pointer is cleared now (the quiz is genuinely
+      // over for this socket's purposes), but the UI snapshot is
+      // deliberately LEFT IN PLACE here — the player is actively looking
+      // at the final leaderboard right now and a refresh in the next few
+      // minutes should still show it (handled by the server-side grace
+      // period in player_restore). It only gets wiped once the grace
+      // period has elapsed, which the next tryRestore() call will detect
+      // and act on via clearAll().
       clearSession();
     });
 

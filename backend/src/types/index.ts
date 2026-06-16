@@ -20,6 +20,7 @@ export interface Quiz {
   currentPhase?: 'question_only' | 'question_options' | 'answer_feedback' | 'correct_answer' | 'intermediate_leaderboard';
   phaseStartedAt?: number;
   createdAt: number;
+  endedAt?: number;   // timestamp when status became 'ended' — used for the post-quiz grace period
 }
 
 export interface Player {

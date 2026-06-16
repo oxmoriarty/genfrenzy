@@ -6,15 +6,13 @@ let socket: Socket | null = null;
 export function getSocket(): Socket {
   if (socket) return socket;
 
-  // Read stored session from localStorage for reconnect
-  let auth: Record<string, string> = {};
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('gf_session');
-    if (stored) {
-      try { auth = JSON.parse(stored); } catch (_) {}
-    }
-  }
-
+  // NOTE: session restore is handled entirely via the explicit
+  // `player_restore` / `admin_rejoin` emits (see useSocketEvents.ts and
+  // admin/page.tsx) — not via socket.handshake.auth. Auth-based handshake
+  // restore raced against the explicit restore call and only one path ever
+  // updated the UI, which was a root cause of players appearing stuck after
+  // reconnecting. Keeping this socket free of auth-based restore logic
+  // avoids reintroducing that race.
   socket = io(URL, {
     transports: ['websocket', 'polling'],
     autoConnect: true,
@@ -24,7 +22,6 @@ export function getSocket(): Socket {
     reconnectionDelayMax: 3000,
     timeout: 20000,
     withCredentials: true,
-    auth,
   });
 
   socket.on('connect', () => {
@@ -40,20 +37,20 @@ export function getSocket(): Socket {
   return socket;
 }
 
+// Persists the player's stable identity (code/playerId/username) so a
+// reconnect or full page refresh can resume the same session. This is
+// SEPARATE from the zustand UI-state cache (`gf_game_state`) — this key
+// represents "who am I / which quiz am I in", while gf_game_state is just a
+// rendering cache that gets corrected by the server on every reconnect.
 export function saveSession(data: Record<string, string>) {
   if (typeof window !== 'undefined') {
     localStorage.setItem('gf_session', JSON.stringify(data));
-    // Update socket auth so next reconnect uses new session
-    const sk = getSocket();
-    (sk as any).auth = data;
   }
 }
 
 export function clearSession() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('gf_session');
-    const sk = getSocket();
-    (sk as any).auth = {};
   }
 }
 
