@@ -97,7 +97,7 @@ export default function AdminPage() {
   const [creating,     setCreating]    = useState(false);
   const [quizCode,     setQuizCode]    = useState('');
   const [quizPwd,      setQuizPwd]     = useState('');
-  const [status,       setStatus]      = useState<'waiting'|'active'|'ended'>('waiting');
+  const [status,       setStatus]      = useState<'waiting'|'counting_down'|'active'|'ended'>('waiting');
   const [players,      setPlayers]     = useState<PlayerRow[]>([]);
   const [lb,           setLb]          = useState<LBEntry[]>([]);
   const [totalQ,       setTotalQ]      = useState(0);
@@ -543,17 +543,17 @@ export default function AdminPage() {
               </button>
               <span style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:100,
                 fontSize:11, fontFamily:'var(--font-jb)',
-                background:status==='active'?'rgba(0,201,141,.15)':status==='ended'?'rgba(255,77,106,.15)':'rgba(255,255,255,.07)',
-                color:status==='active'?'#00C98D':status==='ended'?'#FF4D6A':'#9898AA',
-                border:`1px solid ${status==='active'?'rgba(0,201,141,.3)':status==='ended'?'rgba(255,77,106,.3)':'#25252E'}` }}>
+                background:(status==='active'||status==='counting_down')?'rgba(0,201,141,.15)':status==='ended'?'rgba(255,77,106,.15)':'rgba(255,255,255,.07)',
+                color:(status==='active'||status==='counting_down')?'#00C98D':status==='ended'?'#FF4D6A':'#9898AA',
+                border:`1px solid ${(status==='active'||status==='counting_down')?'rgba(0,201,141,.3)':status==='ended'?'rgba(255,77,106,.3)':'#25252E'}` }}>
                 <motion.span animate={{ opacity:[1,.4,1] }} transition={{ duration:1.5, repeat:Infinity }}
                   style={{ width:6, height:6, borderRadius:'50%', display:'inline-block', background:'currentColor' }}/>
-                {status==='waiting'?'Waiting':status==='active'?'Live':'Ended'}
+                {status==='waiting'?'Waiting':(status==='active'||status==='counting_down')?'Live':'Ended'}
               </span>
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            {status==='active' && (
+            {(status==='active'||status==='counting_down') && (
               <div style={{ textAlign:'center' }}>
                 <div style={{ fontSize:10, color:'#6B6B80', fontFamily:'var(--font-jb)', marginBottom:2 }}>QUESTION</div>
                 <div className="font-display" style={{ fontSize:22, fontWeight:700, color:'#F0F0F8' }}>{currentQ+1}/{totalQ}</div>

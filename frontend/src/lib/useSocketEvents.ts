@@ -8,9 +8,38 @@ export function useSocketEvents() {
   const store = useGameStore();
   const ref   = useRef(store);
   ref.current = store;
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const sk = getSocket();
+
+    // Starts (or restarts) a client-side ticking countdown for the pre-quiz
+    // lobby countdown. The server only tells us the total/remaining
+    // duration once (on 'quiz_countdown' or via player_restore) — ticking
+    // every second locally avoids needing a per-second server broadcast for
+    // something this simple, matching how the rest of the app already
+    // trusts a server-provided starting value (see the in-question timer).
+    const startLobbyCountdown = (totalSeconds: number) => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      let remaining = Math.max(0, Math.round(totalSeconds));
+      ref.current.setLobbyCountdown(remaining);
+      if (remaining <= 0) return;
+      countdownIntervalRef.current = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          ref.current.setLobbyCountdown(0);
+          if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+          }
+          return;
+        }
+        ref.current.setLobbyCountdown(remaining);
+      }, 1000);
+    };
 
     // ── Session validity check ────────────────────────────────────────────
     // Runs on every connect (including the very first connect on a fresh
@@ -58,6 +87,12 @@ export function useSocketEvents() {
             return;
           }
           applyRestoreState(ref.current, res);
+          // If we reconnected mid-countdown, resume ticking from the
+          // correct remaining value (applyRestoreState only set the
+          // immediate number; it can't reach this hook's interval ref).
+          if (res.quizStatus === 'counting_down' && typeof res.countdownRemainingMs === 'number') {
+            startLobbyCountdown(res.countdownRemainingMs / 1000);
+          }
         });
       } catch (_) {
         clearSession();
@@ -88,7 +123,19 @@ export function useSocketEvents() {
       // Lobby -> first question is about to arrive via new_question
     });
 
+    sk.on('quiz_countdown', (d: any) => {
+      const totalSeconds = typeof d?.duration === 'number' ? d.duration / 1000 : 5;
+      startLobbyCountdown(totalSeconds);
+    });
+
     sk.on('new_question', (d: any) => {
+      // Countdown (if any) is over now that the first question is arriving
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      ref.current.setLobbyCountdown(null);
+
       // 1. Clear previous question immediately — prevents flash
       ref.current.clearQuestion();
       ref.current.setCurrentOptions([], false);
@@ -166,7 +213,11 @@ export function useSocketEvents() {
     });
 
     return () => {
-      ['connect','disconnect','player_joined','lobby_update','quiz_started','new_question',
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      ['connect','disconnect','player_joined','lobby_update','quiz_started','quiz_countdown','new_question',
        'show_options','timer_update','answer_result','correct_answer_reveal',
        'leaderboard_update','quiz_ended']
         .forEach(e => sk.off(e));
@@ -186,11 +237,28 @@ function applyRestoreState(store: ReturnType<typeof useGameStore.getState>, res:
   }
 
   if (res.quizStatus === 'waiting') {
+    store.setLobbyCountdown(null);
+    store.setPhase('lobby');
+    return;
+  }
+
+  if (res.quizStatus === 'counting_down') {
+    // Reconnecting mid-countdown: jump straight to the correct remaining
+    // number instead of restarting a fresh 5s. The actual per-second
+    // ticking is started by the caller (see player_restore handling below
+    // in useSocketEvents) since applyRestoreState itself has no access to
+    // the interval ref — it only sets the immediate value here, and the
+    // interval continuation is handled where this function is invoked.
+    const remainingSeconds = typeof res.countdownRemainingMs === 'number'
+      ? res.countdownRemainingMs / 1000
+      : 5;
+    store.setLobbyCountdown(Math.max(0, Math.round(remainingSeconds)));
     store.setPhase('lobby');
     return;
   }
 
   if (res.quizStatus === 'ended') {
+    store.setLobbyCountdown(null);
     if (res.leaderboard)   store.setLeaderboard(res.leaderboard);
     if (res.achievements)  store.setAchievements(res.achievements);
     if (typeof res.myRank === 'number') store.setMyRank(res.myRank);
@@ -199,6 +267,7 @@ function applyRestoreState(store: ReturnType<typeof useGameStore.getState>, res:
   }
 
   // active quiz — rebuild current question + phase
+  store.setLobbyCountdown(null);
   if (typeof res.answerDuration === 'number') {
     store.setAnswerDuration(res.answerDuration);
   }

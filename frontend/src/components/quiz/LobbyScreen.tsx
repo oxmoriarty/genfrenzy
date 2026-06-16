@@ -1,10 +1,10 @@
 'use client';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Clock, Hash, User } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 
 export default function LobbyScreen() {
-  const { quizTheme, quizDescription, playerCount, username, quizCode } = useGameStore();
+  const { quizTheme, quizDescription, playerCount, username, quizCode, lobbyCountdown } = useGameStore();
   return (
     <div style={{ position:'relative', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', overflow:'hidden', background:'#0A0A0F', padding:'24px' }}>
       <div className="mesh-bg" />
@@ -86,20 +86,45 @@ export default function LobbyScreen() {
           </div>
         </motion.div>
 
-        {/* Waiting */}
-        <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:.3 }}
-          style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:13, color:'#9898AA' }}>
-            <Clock size={13} /> Waiting for the host to start…
-          </div>
-          <div style={{ display:'flex', gap:6 }}>
-            {[0,1,2].map(i => (
-              <motion.div key={i} animate={{ y:[0,-6,0], opacity:[.3,1,.3] }}
-                transition={{ duration:.9, repeat:Infinity, delay:i*.2, ease:'easeInOut' }}
-                style={{ width:6, height:6, borderRadius:'50%', background:'#6C47FF' }} />
-            ))}
-          </div>
-        </motion.div>
+        {/* Waiting OR pre-quiz countdown — everything above (theme,
+            description, player orb, info card) is unchanged and still
+            renders normally during the countdown, so players keep seeing
+            their room/name/player-count right up until questions begin. */}
+        <AnimatePresence mode="wait">
+          {lobbyCountdown === null ? (
+            <motion.div key="waiting" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+              transition={{ delay:.3 }}
+              style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:13, color:'#9898AA' }}>
+                <Clock size={13} /> Waiting for the host to start…
+              </div>
+              <div style={{ display:'flex', gap:6 }}>
+                {[0,1,2].map(i => (
+                  <motion.div key={i} animate={{ y:[0,-6,0], opacity:[.3,1,.3] }}
+                    transition={{ duration:.9, repeat:Infinity, delay:i*.2, ease:'easeInOut' }}
+                    style={{ width:6, height:6, borderRadius:'50%', background:'#6C47FF' }} />
+                ))}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div key="countdown" initial={{ opacity:0, scale:.9 }} animate={{ opacity:1, scale:1 }}
+              style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+              <div style={{ fontSize:11, letterSpacing:'.16em', textTransform:'uppercase',
+                color:'#9898AA', fontFamily:'var(--font-jb)' }}>
+                Starting in
+              </div>
+              <motion.div key={lobbyCountdown}
+                initial={{ scale:1.3, opacity:0 }} animate={{ scale:1, opacity:1 }}
+                transition={{ type:'spring', stiffness:380, damping:18 }}
+                className="font-display"
+                style={{ fontSize:64, fontWeight:700, lineHeight:1, letterSpacing:'-2px',
+                  background:'linear-gradient(135deg,#3B6EFF,#9B59FF)',
+                  WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
+                {lobbyCountdown}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>

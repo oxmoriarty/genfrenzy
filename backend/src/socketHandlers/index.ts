@@ -171,9 +171,10 @@ export function register(io: Server, socket: Socket) {
       // fall through and treat as a brand-new join below.
     }
 
-    if (quiz.status === 'active') {
-      // No valid existing player record and the quiz is already running —
-      // genuinely new players cannot join mid-quiz.
+    if (quiz.status === 'active' || quiz.status === 'counting_down') {
+      // No valid existing player record and the quiz has already started
+      // (including the pre-quiz countdown) — genuinely new players cannot
+      // join once the countdown has begun.
       return cb({ success: false, error: 'Quiz already in progress. You cannot join now.' });
     }
 

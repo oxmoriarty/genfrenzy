@@ -5,6 +5,7 @@ import {
 } from './redisClient';
 import { Player, Quiz, QuestionResult } from './types';
 
+const LOBBY_COUNTDOWN_MS   = 5000;  // 5s countdown shown in the lobby after admin starts the quiz
 const Q_PREVIEW_DEFAULT_MS = 5000;  // default question-only phase (used when answerDuration >= 7s)
 const Q_PREVIEW_MIN_MS     = 7000;  // minimum question-only phase when answerDuration < 7s
 const TIMER_DELAY          = 1000;  // 1s head-start before the answer countdown begins
@@ -133,16 +134,37 @@ export async function startQuizEngine(io: Server, code: string) {
   const quiz: Quiz = await getQuiz(code);
   if (!quiz) return;
   clearTimers(code);
-  quiz.status = 'active';
-  quiz.currentQuestionIndex = 0;
-  await setQuiz(code, quiz);
+
+  // Snapshot initial ranks BEFORE the countdown so "Comeback Fren" etc. are
+  // computed from the pre-quiz standing, exactly as before — this part is
+  // unchanged from the original behaviour, just moved ahead of the new
+  // counting_down phase so it still runs exactly once, immediately on start.
   const initial = await getAllPlayers(code);
   const initLb  = await buildLeaderboard(code);
   for (const entry of initLb) {
     const p = initial.find((x: Player) => x.id === entry.playerId);
     if (p) { p.initialRank = entry.rank; await setPlayer(code, p.id, p); }
   }
-  runQuestion(io, code, 0);
+
+  // Phase: counting_down — players see a 5s countdown in the lobby before
+  // the first question appears. Status + timestamp are persisted so a
+  // player who refreshes/reconnects during this window resumes the correct
+  // remaining countdown instead of being dropped back to a plain "waiting"
+  // lobby or breaking on an undefined current question.
+  quiz.status             = 'counting_down';
+  quiz.countdownStartedAt = Date.now();
+  await setQuiz(code, quiz);
+
+  io.to(code).emit('quiz_countdown', { duration: LOBBY_COUNTDOWN_MS });
+
+  addTimer(code, setTimeout(async () => {
+    const q: Quiz = await getQuiz(code);
+    if (!q || q.status !== 'counting_down') return; // guard: quiz may have been reset/ended in the meantime
+    q.status = 'active';
+    q.currentQuestionIndex = 0;
+    await setQuiz(code, q);
+    runQuestion(io, code, 0);
+  }, LOBBY_COUNTDOWN_MS));
 }
 
 async function runQuestion(io: Server, code: string, qi: number) {
@@ -375,6 +397,24 @@ export async function getRestoreState(code: string, playerId: string) {
       quizDescription: quiz.description || '',
       playerCount: all.length,
       myScore: player?.score ?? 0,
+    };
+  }
+
+  if (quiz.status === 'counting_down') {
+    // Compute remaining countdown so a refresh mid-countdown resumes at the
+    // correct number instead of restarting a fresh 5s — keeps the countdown
+    // perfectly in sync across every connected player regardless of when
+    // they reconnect during this window.
+    const startedAt   = quiz.countdownStartedAt || Date.now();
+    const elapsed      = Date.now() - startedAt;
+    const remainingMs  = Math.max(0, LOBBY_COUNTDOWN_MS - elapsed);
+    return {
+      quizStatus: 'counting_down' as const,
+      quizTheme: quiz.theme,
+      quizDescription: quiz.description || '',
+      playerCount: all.length,
+      myScore: player?.score ?? 0,
+      countdownRemainingMs: remainingMs,
     };
   }
 

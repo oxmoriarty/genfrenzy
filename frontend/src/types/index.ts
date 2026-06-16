@@ -48,6 +48,7 @@ export interface GameState {
   quizTheme:         string|null;
   quizDescription:   string|null;
   playerCount:       number;
+  lobbyCountdown:    number|null;   // seconds remaining in the pre-quiz lobby countdown, null when not active
   currentQuestion:   Question|null;
   currentOptions:    string[];
   isMultipleChoice:  boolean;

@@ -15,12 +15,13 @@ export interface Quiz {
   description?: string;   // few-sentence description of the quiz theme, shown in lobby
   questions: Question[];
   adminSocketId: string;
-  status: 'waiting' | 'active' | 'ended';
+  status: 'waiting' | 'counting_down' | 'active' | 'ended';
   currentQuestionIndex: number;
   currentPhase?: 'question_only' | 'question_options' | 'answer_feedback' | 'correct_answer' | 'intermediate_leaderboard';
   phaseStartedAt?: number;
   createdAt: number;
   endedAt?: number;   // timestamp when status became 'ended' — used for the post-quiz grace period
+  countdownStartedAt?: number; // timestamp when the pre-quiz 5s countdown began
 }
 
 export interface Player {

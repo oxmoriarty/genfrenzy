@@ -9,6 +9,7 @@ interface Store extends GameState {
   setQuizDescription(d: string | null): void;
   setAnswerDuration(n: number): void;
   setPlayerCount(n: number): void;
+  setLobbyCountdown(n: number | null): void;
   setCurrentQuestion(q: Question): void;
   setCurrentOptions(o: string[], isMulti: boolean): void;
   setTimeLeft(t: number): void;
@@ -32,7 +33,7 @@ const init: GameState = {
   phase: 'landing',
   playerId: null, username: null, quizCode: null, quizTheme: null,
   quizDescription: null,
-  playerCount: 0, currentQuestion: null, currentOptions: [],
+  playerCount: 0, lobbyCountdown: null, currentQuestion: null, currentOptions: [],
   isMultipleChoice: false,
   questionIndex: 0, totalQuestions: 0, timeLeft: 15, answerDuration: 15,
   hasAnswered: false, selectedIndices: [], answerResult: null,
@@ -57,6 +58,7 @@ export const useGameStore = create<Store>()(
       setQuizDescription: d => set({ quizDescription: d }),
       setAnswerDuration:  n => set({ answerDuration: n }),
       setPlayerCount: n  => set({ playerCount: n }),
+      setLobbyCountdown: n => set({ lobbyCountdown: n }),
 
       setCurrentQuestion: q => set({
         currentQuestion: q,
