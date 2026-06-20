@@ -39,6 +39,29 @@ export async function setPlayer(code: string, id: string, player: any, ttl = QUI
   await redis.sadd(K.players(code), id);
   await redis.expire(K.players(code), ttl);
 }
+
+// Batch version of setPlayer — writes any number of players in a SINGLE
+// network round-trip via ioredis pipelining, instead of 3 round-trips PER
+// PLAYER (SET + SADD + EXPIRE) done sequentially. This is the key
+// optimization for handling hundreds of concurrent players: a loop that
+// calls setPlayer() once per player for 500 players means 500 sequential
+// awaits (1500 Redis commands, one network round-trip at a time) — with
+// typical managed-Redis latency that alone can take several seconds and
+// stall every phase transition for everyone. Pipelining sends all commands
+// at once and waits for all responses together, cutting that to a single
+// round-trip regardless of player count.
+export async function setPlayersBatch(
+  code: string, players: { id: string; data: any }[], ttl = QUIZ_TTL
+) {
+  if (!players.length) return;
+  const pipeline = redis.pipeline();
+  for (const { id, data } of players) {
+    pipeline.set(K.player(code, id), JSON.stringify(data), 'EX', ttl);
+    pipeline.sadd(K.players(code), id);
+  }
+  pipeline.expire(K.players(code), ttl);
+  await pipeline.exec();
+}
 export async function getAllPlayers(code: string) {
   const ids = await redis.smembers(K.players(code));
   if (!ids.length) return [];

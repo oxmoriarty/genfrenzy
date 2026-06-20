@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import {
-  getQuiz, setQuiz, getAllPlayers, getPlayer, setPlayer,
+  getQuiz, setQuiz, getAllPlayers, getPlayer, setPlayer, setPlayersBatch,
   updateScore, getLeaderboard, recordAnswer, redis,
 } from './redisClient';
 import { Player, Quiz, QuestionResult } from './types';
@@ -136,15 +136,19 @@ export async function startQuizEngine(io: Server, code: string) {
   clearTimers(code);
 
   // Snapshot initial ranks BEFORE the countdown so "Comeback Fren" etc. are
-  // computed from the pre-quiz standing, exactly as before — this part is
-  // unchanged from the original behaviour, just moved ahead of the new
-  // counting_down phase so it still runs exactly once, immediately on start.
-  const initial = await getAllPlayers(code);
-  const initLb  = await buildLeaderboard(code);
+  // computed from the pre-quiz standing, exactly as before. Uses a Map for
+  // O(1) lookups instead of Array.find() inside the loop (an O(n) scan
+  // repeated per entry — O(n^2) total, which at 500 players is 250,000
+  // comparisons) and batches the writes into a single Redis round-trip.
+  const initial   = await getAllPlayers(code);
+  const initialMap = new Map<string, Player>(initial.map((p: Player) => [p.id, p]));
+  const initLb    = await buildLeaderboard(code);
+  const rankedPlayers: Player[] = [];
   for (const entry of initLb) {
-    const p = initial.find((x: Player) => x.id === entry.playerId);
-    if (p) { p.initialRank = entry.rank; await setPlayer(code, p.id, p); }
+    const p = initialMap.get(entry.playerId);
+    if (p) { p.initialRank = entry.rank; rankedPlayers.push(p); }
   }
+  await setPlayersBatch(code, rankedPlayers.map(p => ({ id: p.id, data: p })));
 
   // Phase: counting_down — players see a 5s countdown in the lobby before
   // the first question appears. Status + timestamp are persisted so a
@@ -175,12 +179,15 @@ async function runQuestion(io: Server, code: string, qi: number) {
   quiz.currentQuestionIndex = qi;
   await setQuiz(code, quiz);
 
-  // Reset answered flag for all players
+  // Reset answered flag for all players — batched into a single Redis
+  // round-trip via pipelining instead of one sequential write per player.
+  // With 500 players this turns ~500 sequential round-trips (which could
+  // take several seconds and stall the start of every question) into one.
   const players: Player[] = await getAllPlayers(code);
   for (const p of players) {
     p.answeredCurrentQuestion = false;
-    await setPlayer(code, p.id, p);
   }
+  await setPlayersBatch(code, players.map(p => ({ id: p.id, data: p })));
 
   // Clear pending results from previous round
   await redis.del(`pending_results:${code}`);
@@ -232,8 +239,14 @@ async function runQuestion(io: Server, code: string, qi: number) {
     addTimer(code, setTimeout(async () => {
       clearInterval(tick);
 
-      // Collect all players, mark unanswered as wrong
+      // Collect all players, mark unanswered as wrong — batched write
+      // instead of one sequential round-trip per unanswered player. This
+      // loop runs after every single question, so at 500 players (with
+      // potentially hundreds not answering some rounds) the unbatched
+      // version could add multiple seconds of delay before results,
+      // reveal, and leaderboard could even begin for anyone.
       const ps2: Player[] = await getAllPlayers(code);
+      const toUpdate: Player[] = [];
       for (const p of ps2) {
         if (!p.answeredCurrentQuestion) {
           p.streak = 0;
@@ -244,9 +257,10 @@ async function runQuestion(io: Server, code: string, qi: number) {
             selectedIndices: [], correctIndices: q.correctIndices,
           });
           p.incorrectAnswers = (p.incorrectAnswers || 0) + 1;
-          await setPlayer(code, p.id, p);
+          toUpdate.push(p);
         }
       }
+      await setPlayersBatch(code, toUpdate.map(p => ({ id: p.id, data: p })));
 
       // Build leaderboard
       const lb    = await buildLeaderboard(code);
