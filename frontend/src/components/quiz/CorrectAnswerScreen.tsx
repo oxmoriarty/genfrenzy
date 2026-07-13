@@ -37,7 +37,8 @@ export default function CorrectAnswerScreen() {
           <motion.div initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} transition={{ delay:.08 }}
             style={{ borderRadius:18, padding:'16px 20px', marginBottom:16,
               background:'#18181F', border:'1px solid #25252E' }}>
-            <p style={{ fontSize:15, fontWeight:600, color:'#C8C8D8', lineHeight:1.5, margin:0, textAlign:'center' }}>
+            <p style={{ fontSize:15, fontWeight:600, color:'#C8C8D8', lineHeight:1.6,
+              margin:0, textAlign:'center', whiteSpace:'pre-wrap' }}>
               {currentQuestion.text}
             </p>
           </motion.div>

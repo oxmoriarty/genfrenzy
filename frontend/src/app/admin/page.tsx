@@ -451,8 +451,14 @@ export default function AdminPage() {
                 )}
               </div>
               {/* Text */}
-              <input className="field" placeholder="Question text (optional if image provided)"
-                value={q.text} onChange={e=>updateQ(qi,'text',e.target.value)} style={{ marginBottom:12 }}/>
+              <textarea className="field"
+                placeholder={"Question text (optional if image provided)\nPress Enter to add a new line"}
+                value={q.text}
+                onChange={e=>updateQ(qi,'text',e.target.value)}
+                rows={3}
+                style={{ marginBottom:12, resize:'vertical', minHeight:72,
+                  lineHeight:1.6, paddingTop:12, paddingBottom:12,
+                  whiteSpace:'pre-wrap' }}/>
               {/* Image */}
               <div style={{ marginBottom:14 }}>
                 {q.imageBase64 ? (

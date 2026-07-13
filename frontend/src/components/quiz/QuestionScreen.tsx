@@ -199,8 +199,9 @@ export default function QuestionScreen() {
                 </span>
               </div>
               {currentQuestion.text && (
-                <p style={{ fontSize:18, fontWeight:600, color:'#F0F0F8', lineHeight:1.5,
-                  marginBottom: currentQuestion.imageBase64 ? 14 : 0 }}>
+                <p style={{ fontSize:18, fontWeight:600, color:'#F0F0F8', lineHeight:1.6,
+                  marginBottom: currentQuestion.imageBase64 ? 14 : 0,
+                  whiteSpace:'pre-wrap', margin:0 }}>
                   {currentQuestion.text}
                 </p>
               )}
