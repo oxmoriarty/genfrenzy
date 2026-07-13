@@ -13,10 +13,12 @@ const REVEAL_MS            = 3000;  // 3s showing correct answer(s) before leade
 const LB_DISPLAY_MS        = 4000;  // 4s leaderboard between rounds
 const RESULT_SHOW          = 3000;  // 3s for players to see answer_result before reveal
 
-// Determine the question-only preview duration based on the configured
-// answer duration: if the answer window is short (<7s), give players more
-// time to read the question before the rush of options begins.
-function getQPreviewMs(answerDurationSec: number): number {
+// Resolve preview duration for a question. Priority:
+//  1. Explicit previewDuration set by admin
+//  2. Auto-extend to 7s minimum when answerDuration < 7s
+//  3. Default 5s
+function getQPreviewMs(answerDurationSec: number, previewDurationSec?: number): number {
+  if (previewDurationSec && previewDurationSec > 0) return previewDurationSec * 1000;
   return answerDurationSec < 7 ? Q_PREVIEW_MIN_MS : Q_PREVIEW_DEFAULT_MS;
 }
 
@@ -32,13 +34,12 @@ function addTimer(code: string, t: NodeJS.Timeout | ReturnType<typeof setInterva
   timers.get(code)!.push(t);
 }
 
-// Helper to update the quiz's current phase + timestamp (used for reconnect restore)
-async function setPhase(code: string, phase: Quiz['currentPhase']) {
-  const quiz: Quiz = await getQuiz(code);
-  if (!quiz) return;
+// Inline phase update — mutates the quiz object in place so the caller can
+// batch this with their next setQuiz() call, eliminating the extra Redis
+// GET round-trip that the old setPhase() helper required per phase change.
+function applyPhase(quiz: Quiz, phase: Quiz['currentPhase']) {
   quiz.currentPhase   = phase;
   quiz.phaseStartedAt = Date.now();
-  await setQuiz(code, quiz);
 }
 
 // ─── Leaderboard builder ─────────────────────────────────────────────────────
@@ -176,17 +177,14 @@ async function runQuestion(io: Server, code: string, qi: number) {
   if (!quiz || quiz.status !== 'active') return;
   if (qi >= quiz.questions.length) { endQuiz(io, code); return; }
 
+  // Inline phase update + save in one setQuiz call (no extra GET round-trip)
   quiz.currentQuestionIndex = qi;
+  applyPhase(quiz, 'question_only');
   await setQuiz(code, quiz);
 
-  // Reset answered flag for all players — batched into a single Redis
-  // round-trip via pipelining instead of one sequential write per player.
-  // With 500 players this turns ~500 sequential round-trips (which could
-  // take several seconds and stall the start of every question) into one.
+  // Reset answered flags — pipelined batch write (single Redis round-trip)
   const players: Player[] = await getAllPlayers(code);
-  for (const p of players) {
-    p.answeredCurrentQuestion = false;
-  }
+  for (const p of players) { p.answeredCurrentQuestion = false; }
   await setPlayersBatch(code, players.map(p => ({ id: p.id, data: p })));
 
   // Clear pending results from previous round
@@ -194,26 +192,28 @@ async function runQuestion(io: Server, code: string, qi: number) {
 
   const q = quiz.questions[qi];
 
-  // Per-question answer duration (seconds), configured by the admin at quiz
-  // creation. Falls back to 15s for any legacy/older quiz data.
-  const answerDuration = q.timeLimit && q.timeLimit > 0 ? q.timeLimit : 15;
-  const answerMs       = answerDuration * 1000;
-  const qPreviewMs     = getQPreviewMs(answerDuration);
+  const answerDuration  = q.timeLimit && q.timeLimit > 0 ? q.timeLimit : 15;
+  const answerMs        = answerDuration * 1000;
+  // Use admin-configured previewDuration if set, else auto-compute
+  const qPreviewMs      = getQPreviewMs(answerDuration, q.previewDuration);
+  const previewDuration = Math.round(qPreviewMs / 1000);
 
-  // Phase 1: Question only
-  await setPhase(code, 'question_only');
+  // Phase 1: Question only — phase already applied above with setQuiz
   io.to(code).emit('new_question', {
     questionIndex: qi, totalQuestions: quiz.questions.length,
     text: q.text, imageBase64: q.imageBase64 || null,
     isMultipleChoice: q.isMultipleChoice,
     phase: 'question_only', duration: qPreviewMs,
-    answerDuration,
+    answerDuration, previewDuration,
   });
 
   addTimer(code, setTimeout(async () => {
+    // Phase 2: options — inline phase update then single setQuiz write
+    const qCurrent: Quiz = await getQuiz(code);
+    if (!qCurrent || qCurrent.status !== 'active') return;
+    applyPhase(qCurrent, 'question_options');
+    await setQuiz(code, qCurrent);
 
-    // Phase 2: Show options — emit before timer starts so clients render options first
-    await setPhase(code, 'question_options');
     io.to(code).emit('show_options', {
       questionIndex: qi, options: q.options,
       isMultipleChoice: q.isMultipleChoice, duration: answerMs,
@@ -267,8 +267,11 @@ async function runQuestion(io: Server, code: string, qi: number) {
       const lbMap = new Map(lb.map(e => [e.playerId, e.rank]));
       const ioRef = ((global as any).__gf_io as Server) || io;
 
-      // Phase 3: answer_feedback — flush results to everyone simultaneously
-      await setPhase(code, 'answer_feedback');
+      // Phase 3: answer_feedback
+      {
+        const qp: Quiz = await getQuiz(code);
+        if (qp) { applyPhase(qp, 'answer_feedback'); await setQuiz(code, qp); }
+      }
 
       const pendingRaw = await redis.hgetall(`pending_results:${code}`) || {};
 
@@ -299,9 +302,12 @@ async function runQuestion(io: Server, code: string, qi: number) {
 
       await redis.del(`pending_results:${code}`);
 
-      // Phase 4: After RESULT_SHOW ms, reveal the correct answer(s) to everyone
+      // Phase 4: correct answer reveal
       addTimer(code, setTimeout(async () => {
-        await setPhase(code, 'correct_answer');
+        {
+          const qp: Quiz = await getQuiz(code);
+          if (qp) { applyPhase(qp, 'correct_answer'); await setQuiz(code, qp); }
+        }
         io.to(code).emit('correct_answer_reveal', {
           questionIndex: qi,
           correctIndices: q.correctIndices,
@@ -311,7 +317,10 @@ async function runQuestion(io: Server, code: string, qi: number) {
 
         // Phase 5: After REVEAL_MS, send leaderboard to room
         addTimer(code, setTimeout(async () => {
-          await setPhase(code, 'intermediate_leaderboard');
+          {
+            const qp: Quiz = await getQuiz(code);
+            if (qp) { applyPhase(qp, 'intermediate_leaderboard'); await setQuiz(code, qp); }
+          }
           io.to(code).emit('leaderboard_update', {
             leaderboard: lb, questionIndex: qi, isIntermediate: true,
           });
@@ -480,6 +489,7 @@ export async function getRestoreState(code: string, playerId: string) {
     isMultipleChoice: q.isMultipleChoice,
     phase,
     answerDuration: baseAnswerDuration,
+    previewDuration: q.previewDuration || 0,
   };
 
   if (phase === 'question_only') {

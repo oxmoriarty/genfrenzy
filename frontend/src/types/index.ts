@@ -56,6 +56,7 @@ export interface GameState {
   totalQuestions:    number;
   timeLeft:          number;
   answerDuration:    number;        // total seconds allowed per question (admin-configured)
+  previewDuration:   number;         // seconds question is shown before options appear (admin-configured)
   hasAnswered:       boolean;
   selectedIndices:   number[];       // tracks multi-select choices
   answerResult:      AnswerResult|null;

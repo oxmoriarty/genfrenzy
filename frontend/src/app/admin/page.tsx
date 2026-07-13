@@ -92,6 +92,7 @@ export default function AdminPage() {
   const [theme,        setTheme]       = useState('');
   const [description,  setDescription] = useState('');
   const [answerDuration, setAnswerDuration] = useState(15);
+  const [previewDuration, setPreviewDuration] = useState(5);
   const [questions,    setQuestions]   = useState<QInput[]>([BLANK_Q()]);
   const [createErr,    setCreateErr]   = useState('');
   const [creating,     setCreating]    = useState(false);
@@ -227,6 +228,9 @@ export default function AdminPage() {
     if (!Number.isFinite(answerDuration) || answerDuration < 5 || answerDuration > 60) {
       setCreateErr('Answer time must be between 5 and 60 seconds'); return;
     }
+    if (!Number.isFinite(previewDuration) || previewDuration < 2 || previewDuration > 30) {
+      setCreateErr('Question preview time must be between 2 and 30 seconds'); return;
+    }
     if (questions.some(q => !q.text.trim() && !q.imageBase64)) {
       setCreateErr('Every question needs text or an image'); return;
     }
@@ -237,7 +241,7 @@ export default function AdminPage() {
       setCreateErr('Mark at least one correct answer per question'); return;
     }
     setCreating(true); setCreateErr('');
-    sk.emit('admin_create_quiz', { password, theme, description, answerDuration, questions }, (res: any) => {
+    sk.emit('admin_create_quiz', { password, theme, description, answerDuration, previewDuration, questions }, (res: any) => {
       setCreating(false);
       if (res.success) {
         setQuizCode(res.code);
@@ -388,7 +392,7 @@ export default function AdminPage() {
           <label style={{ display:'block', fontSize:10, letterSpacing:'.16em', textTransform:'uppercase', color:'#9898AA', fontFamily:'var(--font-jb)', marginBottom:10 }}>
             Answer Time <span style={{ color:'#6B6B80', textTransform:'none', letterSpacing:'normal' }}>(seconds per question · 5–60)</span>
           </label>
-          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
             <input className="field" type="number" min={5} max={60} step={1}
               value={answerDuration}
               onChange={e=>{
@@ -397,7 +401,24 @@ export default function AdminPage() {
               }}
               style={{ maxWidth:100 }}/>
             <span style={{ fontSize:12, color:'#6B6B80' }}>
-              seconds{answerDuration > 0 && answerDuration < 7 ? ' · question preview extends to 7s' : ''}
+              seconds{answerDuration > 0 && answerDuration < 7 ? ' · preview auto-extends to 7s' : ''}
+            </span>
+          </div>
+
+          <label style={{ display:'block', fontSize:10, letterSpacing:'.16em', textTransform:'uppercase', color:'#9898AA', fontFamily:'var(--font-jb)', marginBottom:10 }}>
+            Question Preview Time <span style={{ color:'#6B6B80', textTransform:'none', letterSpacing:'normal' }}>(seconds before options appear · 2–30)</span>
+          </label>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <input className="field" type="number" min={2} max={30} step={1}
+              value={previewDuration}
+              onChange={e=>{
+                const v = parseInt(e.target.value, 10);
+                setPreviewDuration(Number.isFinite(v) ? v : 0);
+              }}
+              style={{ maxWidth:100 }}/>
+            <span style={{ fontSize:12, color:'#6B6B80' }}>
+              seconds{answerDuration > 0 && answerDuration < 7 && previewDuration < 7
+                ? ' · overrides the auto-7s extension' : ''}
             </span>
           </div>
         </div>

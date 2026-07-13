@@ -143,6 +143,9 @@ export function useSocketEvents() {
 
       const duration = typeof d.answerDuration === 'number' ? d.answerDuration : 15;
       ref.current.setAnswerDuration(duration);
+      if (typeof d.previewDuration === 'number' && d.previewDuration > 0) {
+        ref.current.setPreviewDuration(d.previewDuration);
+      }
 
       // 2. Set new question on next tick
       setTimeout(() => {
@@ -270,6 +273,9 @@ function applyRestoreState(store: ReturnType<typeof useGameStore.getState>, res:
   store.setLobbyCountdown(null);
   if (typeof res.answerDuration === 'number') {
     store.setAnswerDuration(res.answerDuration);
+  }
+  if (typeof res.previewDuration === 'number' && res.previewDuration > 0) {
+    store.setPreviewDuration(res.previewDuration);
   }
 
   if (res.questionIndex !== undefined) {

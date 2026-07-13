@@ -36,6 +36,10 @@ export function register(io: Server, socket: Socket) {
     if (!Number.isFinite(answerDuration) || answerDuration <= 0) answerDuration = 15;
     answerDuration = Math.max(5, Math.min(60, Math.round(answerDuration)));
 
+    let previewDuration = Number(data.previewDuration);
+    if (!Number.isFinite(previewDuration) || previewDuration <= 0) previewDuration = 0; // 0 = use auto-computed default
+    if (previewDuration > 0) previewDuration = Math.max(2, Math.min(30, Math.round(previewDuration)));
+
     const quiz: Quiz = {
       id: uuid(), code, theme: data.theme,
       description: (data.description || '').trim().slice(0, 300),
@@ -47,6 +51,7 @@ export function register(io: Server, socket: Socket) {
         correctIndices: Array.isArray(q.correctIndices) ? q.correctIndices : [q.correctIndex ?? 0],
         isMultipleChoice: Array.isArray(q.correctIndices) ? q.correctIndices.length > 1 : false,
         timeLimit: answerDuration,
+        previewDuration: previewDuration > 0 ? previewDuration : undefined,
       })),
       adminSocketId: socket.id,
       status: 'waiting',

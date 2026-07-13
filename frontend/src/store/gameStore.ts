@@ -8,6 +8,7 @@ interface Store extends GameState {
   setPlayerInfo(id: string, u: string, c: string, t: string, d?: string): void;
   setQuizDescription(d: string | null): void;
   setAnswerDuration(n: number): void;
+  setPreviewDuration(n: number): void;
   setPlayerCount(n: number): void;
   setLobbyCountdown(n: number | null): void;
   setCurrentQuestion(q: Question): void;
@@ -35,7 +36,7 @@ const init: GameState = {
   quizDescription: null,
   playerCount: 0, lobbyCountdown: null, currentQuestion: null, currentOptions: [],
   isMultipleChoice: false,
-  questionIndex: 0, totalQuestions: 0, timeLeft: 15, answerDuration: 15,
+  questionIndex: 0, totalQuestions: 0, timeLeft: 15, answerDuration: 15, previewDuration: 5,
   hasAnswered: false, selectedIndices: [], answerResult: null,
   revealCorrectIndices: [],
   leaderboard: [], achievements: [],
@@ -57,6 +58,7 @@ export const useGameStore = create<Store>()(
       setPlayerInfo: (id, u, c, t, d) => set({ playerId: id, username: u, quizCode: c, quizTheme: t, quizDescription: d ?? null }),
       setQuizDescription: d => set({ quizDescription: d }),
       setAnswerDuration:  n => set({ answerDuration: n }),
+      setPreviewDuration: n => set({ previewDuration: n }),
       setPlayerCount: n  => set({ playerCount: n }),
       setLobbyCountdown: n => set({ lobbyCountdown: n }),
 
@@ -134,6 +136,7 @@ export const useGameStore = create<Store>()(
         totalQuestions: s.totalQuestions,
         timeLeft: s.timeLeft,
         answerDuration: s.answerDuration,
+        previewDuration: s.previewDuration,
         hasAnswered: s.hasAnswered,
         selectedIndices: s.selectedIndices,
         answerResult: s.answerResult,

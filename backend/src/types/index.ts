@@ -5,7 +5,8 @@ export interface Question {
   options: string[];
   correctIndices: number[];      // supports multiple correct answers
   isMultipleChoice: boolean;     // true = multi-select
-  timeLimit: number;
+  timeLimit: number;       // answer duration in seconds (admin-configured)
+  previewDuration?: number;  // question preview duration in seconds (admin-configured, optional)
 }
 
 export interface Quiz {

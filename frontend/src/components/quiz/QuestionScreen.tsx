@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Check, CheckSquare } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
@@ -12,17 +12,98 @@ const OPTS = [
   { L:'D', c:'#00D4B4', g:'rgba(0,212,180,.32)',   bg:'rgba(0,212,180,.09)',  sel:'rgba(0,212,180,.2)'   },
 ];
 
+// ── Timer ring — isolated component that ONLY subscribes to timeLeft and
+// answerDuration. This is the key performance fix: timeLeft changes every
+// second, but the option cards don't need to re-render when it does. By
+// splitting the timer into its own component with its own narrow selector,
+// the 4 option cards are completely unaffected by timer ticks.
+const TimerRing = memo(function TimerRing() {
+  const timeLeft     = useGameStore(s => s.timeLeft);
+  const answerDuration = useGameStore(s => s.answerDuration);
+  const phase        = useGameStore(s => s.phase);
 
+  if (phase !== 'question_options') return null;
+
+  const urgent  = timeLeft <= 5;
+  const warning = timeLeft > 5 && timeLeft <= 10;
+  const tc  = urgent ? '#FF4D6A' : warning ? '#FFB547' : '#3B6EFF';
+  const pct = timeLeft / (answerDuration || 15);
+  const C   = 2 * Math.PI * 20;
+
+  return (
+    <motion.div initial={{ scale:.6, opacity:0 }} animate={{ scale:1, opacity:1 }}
+      style={{ position:'relative' }}>
+      <motion.div
+        animate={urgent ? { scale:[1,1.1,1] } : {}}
+        transition={{ duration:.5, repeat: urgent ? Infinity : 0 }}>
+        <svg width="56" height="56" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r="20" fill="none"
+            stroke={urgent?'rgba(255,77,106,.18)':warning?'rgba(255,183,71,.18)':'rgba(59,110,255,.13)'}
+            strokeWidth="3.5"/>
+          <circle cx="28" cy="28" r="20" fill="none"
+            stroke={tc} strokeWidth="3.5" strokeLinecap="round"
+            strokeDasharray={C}
+            strokeDashoffset={C * (1 - pct)}
+            style={{ transform:'rotate(-90deg)', transformOrigin:'50% 50%',
+              transition:'stroke-dashoffset .45s linear, stroke .3s' }}/>
+          <text x="28" y="33" textAnchor="middle" fontSize="13" fontWeight="700"
+            fill={tc} fontFamily="var(--font-jb)">{timeLeft}</text>
+        </svg>
+      </motion.div>
+      {urgent && (
+        <motion.div animate={{ scale:[1,1.7], opacity:[.5,0] }}
+          transition={{ duration:.9, repeat:Infinity }}
+          style={{ position:'absolute', inset:0, borderRadius:'50%',
+            border:'2px solid rgba(255,77,106,.45)', pointerEvents:'none' }}/>
+      )}
+    </motion.div>
+  );
+});
+
+// ── Progress bar — also isolated so it doesn't drag along the whole screen
+const ProgressBar = memo(function ProgressBar() {
+  const timeLeft      = useGameStore(s => s.timeLeft);
+  const answerDuration = useGameStore(s => s.answerDuration);
+  const phase         = useGameStore(s => s.phase);
+
+  const urgent  = phase === 'question_options' && timeLeft <= 5;
+  const warning = phase === 'question_options' && timeLeft > 5 && timeLeft <= 10;
+  const tc  = urgent ? '#FF4D6A' : warning ? '#FFB547' : '#3B6EFF';
+  const pct = timeLeft / (answerDuration || 15);
+
+  return (
+    <div style={{ height:3, background:'#111118', flexShrink:0 }}>
+      <motion.div
+        animate={{ scaleX: phase === 'question_options' ? pct : 1 }}
+        transition={{ duration:.4 }}
+        style={{ height:'100%', transformOrigin:'left',
+          background:`linear-gradient(90deg,${tc},${tc}88)` }} />
+    </div>
+  );
+});
+
+// ── Main question screen — subscribes to everything EXCEPT timeLeft ───────────
 export default function QuestionScreen() {
-  const {
-    phase, currentQuestion, currentOptions, isMultipleChoice,
-    questionIndex, totalQuestions, timeLeft, answerDuration,
-    hasAnswered, selectedIndices,
-    setHasAnswered, toggleSelected, setSelectedIndices,
-  } = useGameStore();
+  // Narrow selectors: only the fields this component actually uses.
+  // timeLeft is deliberately excluded — TimerRing and ProgressBar handle it.
+  const phase           = useGameStore(s => s.phase);
+  const currentQuestion = useGameStore(s => s.currentQuestion);
+  const currentOptions  = useGameStore(s => s.currentOptions);
+  const isMultipleChoice = useGameStore(s => s.isMultipleChoice);
+  const questionIndex   = useGameStore(s => s.questionIndex);
+  const totalQuestions  = useGameStore(s => s.totalQuestions);
+  const hasAnswered     = useGameStore(s => s.hasAnswered);
+  const selectedIndices = useGameStore(s => s.selectedIndices);
+  const setHasAnswered  = useGameStore(s => s.setHasAnswered);
+  const toggleSelected  = useGameStore(s => s.toggleSelected);
+  const setSelectedIndices = useGameStore(s => s.setSelectedIndices);
 
-  const tlRef = useRef(timeLeft);
-  tlRef.current = timeLeft;
+  // Keep timeLeft accessible for submit without subscribing the whole component
+  const tlRef = useRef(0);
+  // Safe: timeLeft changes don't cause re-renders here, but we need its
+  // current value when submit fires. We read it directly from the store
+  // singleton rather than subscribing.
+  const getTimeLeft = useCallback(() => useGameStore.getState().timeLeft, []);
 
   const submit = useCallback((indices: number[]) => {
     if (hasAnswered || phase !== 'question_options') return;
@@ -30,9 +111,9 @@ export default function QuestionScreen() {
     getSocket().emit('submit_answer', {
       questionIndex,
       selectedIndices: indices,
-      timeLeft: tlRef.current,
+      timeLeft: getTimeLeft(),
     }, () => {});
-  }, [hasAnswered, phase, questionIndex, setHasAnswered]);
+  }, [hasAnswered, phase, questionIndex, setHasAnswered, getTimeLeft]);
 
   const handleSingleClick = useCallback((i: number) => {
     if (hasAnswered) return;
@@ -50,7 +131,7 @@ export default function QuestionScreen() {
     submit(selectedIndices);
   }, [hasAnswered, selectedIndices, submit]);
 
-  // Null guard — shows blank while transition clears old question
+  // Null guard — blank loading state while question transitions
   if (!currentQuestion) {
     return (
       <div style={{ minHeight:'100vh', background:'#0A0A0F', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -66,23 +147,11 @@ export default function QuestionScreen() {
     );
   }
 
-  const urgent  = phase === 'question_options' && timeLeft <= 5;
-  const warning = phase === 'question_options' && timeLeft > 5 && timeLeft <= 10;
-  const tc  = urgent ? '#FF4D6A' : warning ? '#FFB547' : '#3B6EFF';
-  const pct = timeLeft / (answerDuration || 15);
-  const C   = 2 * Math.PI * 20;
-
   return (
     <div style={{ position:'relative', minHeight:'100vh', display:'flex', flexDirection:'column', background:'#0A0A0F' }}>
 
-      {/* Progress bar */}
-      <div style={{ height:3, background:'#111118', flexShrink:0 }}>
-        <motion.div
-          animate={{ scaleX: phase === 'question_options' ? pct : 1 }}
-          transition={{ duration:.4 }}
-          style={{ height:'100%', transformOrigin:'left',
-            background:`linear-gradient(90deg,${tc},${tc}88)` }} />
-      </div>
+      {/* Progress bar — isolated, only re-renders on timer ticks */}
+      <ProgressBar />
 
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -100,36 +169,9 @@ export default function QuestionScreen() {
           )}
         </div>
 
-        {/* Timer ring */}
+        {/* Timer ring — isolated component, won't re-render option cards */}
         <AnimatePresence mode="wait">
-          {phase === 'question_options' && (
-            <motion.div key="timer" initial={{ scale:.6, opacity:0 }} animate={{ scale:1, opacity:1 }}
-              style={{ position:'relative' }}>
-              <motion.div
-                animate={urgent ? { scale:[1,1.1,1] } : {}}
-                transition={{ duration:.5, repeat: urgent ? Infinity : 0 }}>
-                <svg width="56" height="56" viewBox="0 0 56 56">
-                  <circle cx="28" cy="28" r="20" fill="none"
-                    stroke={urgent?'rgba(255,77,106,.18)':warning?'rgba(255,183,71,.18)':'rgba(59,110,255,.13)'}
-                    strokeWidth="3.5"/>
-                  <circle cx="28" cy="28" r="20" fill="none"
-                    stroke={tc} strokeWidth="3.5" strokeLinecap="round"
-                    strokeDasharray={C}
-                    strokeDashoffset={C * (1 - pct)}
-                    style={{ transform:'rotate(-90deg)', transformOrigin:'50% 50%',
-                      transition:'stroke-dashoffset .45s linear, stroke .3s' }}/>
-                  <text x="28" y="33" textAnchor="middle" fontSize="13" fontWeight="700"
-                    fill={tc} fontFamily="var(--font-jb)">{timeLeft}</text>
-                </svg>
-              </motion.div>
-              {urgent && (
-                <motion.div animate={{ scale:[1,1.7], opacity:[.5,0] }}
-                  transition={{ duration:.9, repeat:Infinity }}
-                  style={{ position:'absolute', inset:0, borderRadius:'50%',
-                    border:'2px solid rgba(255,77,106,.45)', pointerEvents:'none' }}/>
-              )}
-            </motion.div>
-          )}
+          {phase === 'question_options' && <TimerRing key="timer" />}
         </AnimatePresence>
       </div>
 
@@ -137,7 +179,7 @@ export default function QuestionScreen() {
       <div style={{ flex:1, display:'flex', flexDirection:'column',
         padding:'0 16px 32px', maxWidth:700, margin:'0 auto', width:'100%' }}>
 
-        {/* Question card — stable key (no phase) prevents re-mount flash */}
+        {/* Question card */}
         <AnimatePresence mode="wait">
           <motion.div key={`q-${questionIndex}`}
             initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }}
@@ -185,7 +227,7 @@ export default function QuestionScreen() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Options */}
+        {/* Options — memoized structure, only re-renders when selections change */}
         <AnimatePresence>
           {phase === 'question_options' && (
             <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ duration:.22 }}>
