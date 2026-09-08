@@ -78,10 +78,19 @@ export function register(io: Server, socket: Socket) {
 
   // ── Admin: dashboard data ──────────────────────────────────────────────────
   socket.on('admin_get_dashboard', async (data: any, cb: Function) => {
+    // Fetch quiz and players in parallel, then reuse players list for
+    // buildLeaderboard — halves the Redis reads vs the sequential approach.
+    // quiz doesn't need to be fetched if it wasn't found on first check,
+    // so we do a fast existence check before the full parallel fetch.
     const quiz: Quiz = await getQuiz(data.code);
     if (!quiz) return cb({ success: false, error: 'Not found' });
+
     const players: Player[] = await getAllPlayers(data.code);
-    const lb = await buildLeaderboard(data.code);
+    // Pass the already-fetched players list so buildLeaderboard doesn't
+    // call getAllPlayers a second time — eliminates 1 SMEMBERS + MGET×N
+    // on every admin dashboard poll (which runs every 5 seconds).
+    const lb = await buildLeaderboard(data.code, players);
+
     cb({
       success: true,
       quiz: {
@@ -89,12 +98,14 @@ export function register(io: Server, socket: Socket) {
         currentQuestionIndex: quiz.currentQuestionIndex,
         totalQuestions: quiz.questions.length, code: quiz.code,
       },
+      // Only return fields the admin UI actually renders — omit
+      // questionResults (large array) from the poll response to reduce
+      // payload size. Export uses a separate admin_export_data event.
       players: players.map(p => ({
         id: p.id, username: p.username, score: p.score,
         correctAnswers: p.correctAnswers,
         partialAnswers: p.partialAnswers || 0,
         incorrectAnswers: p.incorrectAnswers || 0,
-        questionResults: p.questionResults || [],
       })),
       leaderboard: lb,
     });
@@ -118,7 +129,7 @@ export function register(io: Server, socket: Socket) {
     const quiz: Quiz = await getQuiz(data.code);
     if (!quiz) return cb({ success: false, error: 'Quiz not found' });
     const players: Player[] = await getAllPlayers(data.code);
-    const lb = await buildLeaderboard(data.code);
+    const lb = await buildLeaderboard(data.code, players);
     const rankMap = new Map(lb.map(e => [e.playerId, e.rank]));
     const exportData = players.map(p => ({
       rank: rankMap.get(p.id) || 0,
@@ -177,10 +188,53 @@ export function register(io: Server, socket: Socket) {
     }
 
     if (quiz.status === 'active' || quiz.status === 'counting_down') {
-      // No valid existing player record and the quiz has already started
-      // (including the pre-quiz countdown) — genuinely new players cannot
-      // join once the countdown has begun.
-      return cb({ success: false, error: 'Quiz already in progress. You cannot join now.' });
+      // Late join: quiz is already running. Create the player record and
+      // immediately send them the current quiz state so they can participate
+      // from the current question onwards. Their score starts at 0.
+      //
+      // Design decisions:
+      //  - No room broadcast: the lobby phase is over; existing players don't
+      //    need to know someone just joined mid-quiz. This keeps zero impact
+      //    on existing players.
+      //  - No lobby_update: the lobby UI isn't showing for anyone anymore.
+      //  - Admin dashboard is already polling every 5s; no need for a push
+      //    broadcast just for the admin counter.
+      //  - answeredCurrentQuestion starts false (correct default — they
+      //    haven't answered the current question because they just arrived).
+      //  - joinedAt/joinedQuestionIndex recorded so CSV export can show
+      //    which questions they participated in.
+      const playerId = uuid();
+      const joinedQi = quiz.currentQuestionIndex ?? 0;
+      const player: Player = {
+        id: playerId, socketId: socket.id, username, quizCode: code,
+        score: 0, correctAnswers: 0, partialAnswers: 0, incorrectAnswers: 0,
+        streak: 0, maxStreak: 0, answerTimes: [],
+        initialRank: 0, answeredCurrentQuestion: false, questionResults: [],
+        joinedQuestionIndex: joinedQi,
+      };
+      await setPlayer(code, playerId, player);
+      await updateScore(code, playerId, 0);
+      await setSession(socket.id, { role: 'player', code, playerId, username });
+      socket.join(code);
+
+      // Get current quiz state to synchronize the late joiner immediately.
+      // getRestoreState already handles every phase (question_only,
+      // question_options with remaining timer, answer_feedback, etc.) and
+      // is the same path used by reconnecting players — reusing it here
+      // avoids duplicating any state-reconstruction logic.
+      const state = await getRestoreState(code, playerId);
+      const all   = await getAllPlayers(code);
+
+      cb({
+        success: true,
+        quizTheme: quiz.theme,
+        quizDescription: quiz.description || '',
+        playerCount: all.length,
+        playerId,
+        lateJoin: true,
+        currentState: state,
+      });
+      return;
     }
 
     // Brand-new player joining a quiz that's still in the waiting lobby

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { getSocket, saveSession, clearSession } from '@/lib/socket';
 import { useGameStore } from '@/store/gameStore';
 import { playSound } from '@/lib/sounds';
+import { applyRestoreState } from '@/lib/restoreState';
 
 export function useSocketEvents() {
   const store = useGameStore();
@@ -228,6 +229,7 @@ export function useSocketEvents() {
   }, []);
 }
 
+<<<<<<< HEAD
 // ─── Apply a player_restore payload to the store ─────────────────────────────
 // Rebuilds the entire UI state to match the server's authoritative view of
 // the quiz — used after a page refresh or socket reconnect.
@@ -322,3 +324,5 @@ function applyRestoreState(store: ReturnType<typeof useGameStore.getState>, res:
     store.setPhase(res.phase);
   }
 }
+=======
+>>>>>>> 9e5fb72 (Implemented late joining after a quiz already begun and optimized the backend code)

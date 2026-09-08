@@ -41,6 +41,7 @@ export interface Player {
   answeredCurrentQuestion: boolean;
   // Per-question detail for XLSX export
   questionResults: QuestionResult[];
+  joinedQuestionIndex?: number; // question index when player joined (undefined = joined before quiz started)
 }
 
 export interface QuestionResult {

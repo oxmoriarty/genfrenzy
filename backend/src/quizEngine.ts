@@ -1,7 +1,7 @@
 import { Server } from 'socket.io';
 import {
   getQuiz, setQuiz, getAllPlayers, getPlayer, setPlayer, setPlayersBatch,
-  updateScore, getLeaderboard, recordAnswer, redis,
+  updateScore, getLeaderboard, recordAnswer, writeAnswerResult, redis,
 } from './redisClient';
 import { Player, Quiz, QuestionResult } from './types';
 
@@ -43,10 +43,12 @@ function applyPhase(quiz: Quiz, phase: Quiz['currentPhase']) {
 }
 
 // ─── Leaderboard builder ─────────────────────────────────────────────────────
-export async function buildLeaderboard(code: string) {
-  const raw     = await getLeaderboard(code);
-  const players = await getAllPlayers(code);
-  const pmap    = new Map<string, Player>(players.map((p: Player) => [p.id, p]));
+export async function buildLeaderboard(code: string, cachedPlayers?: Player[]) {
+  const [raw, players] = await Promise.all([
+    getLeaderboard(code),
+    cachedPlayers ? Promise.resolve(cachedPlayers) : getAllPlayers(code),
+  ]);
+  const pmap = new Map<string, Player>(players.map((p: Player) => [p.id, p]));
   const entries = [];
   for (let i = 0; i < raw.length; i += 2) {
     const pid   = raw[i];
@@ -262,20 +264,22 @@ async function runQuestion(io: Server, code: string, qi: number) {
       }
       await setPlayersBatch(code, toUpdate.map(p => ({ id: p.id, data: p })));
 
-      // Build leaderboard
-      const lb    = await buildLeaderboard(code);
+      // Build leaderboard — pass ps2 so no redundant getAllPlayers call.
+      // Fetch quiz (for phase update) and pending results in parallel.
+      const [lb, qpFetched, pendingRaw] = await Promise.all([
+        buildLeaderboard(code, ps2),
+        getQuiz(code),
+        redis.hgetall(`pending_results:${code}`),
+      ]);
       const lbMap = new Map(lb.map(e => [e.playerId, e.rank]));
       const ioRef = ((global as any).__gf_io as Server) || io;
 
-      // Phase 3: answer_feedback
-      {
-        const qp: Quiz = await getQuiz(code);
-        if (qp) { applyPhase(qp, 'answer_feedback'); await setQuiz(code, qp); }
-      }
+      // Phase 3: answer_feedback — flush results to everyone simultaneously
+      await setPhase(code, 'answer_feedback');
 
-      const pendingRaw = await redis.hgetall(`pending_results:${code}`) || {};
+      const pending = pendingRaw || {};
 
-      for (const [socketId, resultJson] of Object.entries(pendingRaw)) {
+      for (const [socketId, resultJson] of Object.entries(pending)) {
         try {
           const result = JSON.parse(resultJson as string);
           const rank   = lbMap.get(result.playerId) || 0;
@@ -340,8 +344,12 @@ export async function handleAnswer(
   io: Server, code: string, playerId: string,
   qi: number, selectedIndices: number[], timeLeft: number
 ) {
-  const quiz   = await getQuiz(code);
-  const player = await getPlayer(code, playerId);
+  // Fetch quiz and player in parallel — halves the Redis round-trips
+  // before we can start processing the answer.
+  const [quiz, player] = await Promise.all([
+    getQuiz(code),
+    getPlayer(code, playerId),
+  ]);
   if (!quiz || !player || player.answeredCurrentQuestion || quiz.currentQuestionIndex !== qi) {
     return null;
   }
@@ -371,17 +379,18 @@ export async function handleAnswer(
   }
 
   player.answeredCurrentQuestion = true;
-  await setPlayer(code, playerId, player);
-  await updateScore(code, playerId, player.score);
-  await recordAnswer(code, qi, playerId, selectedIndices.join(','), timeLeft);
 
-  // Store for synchronized flush at timer expiry
-  await redis.hset(`pending_results:${code}`, player.socketId, JSON.stringify({
+  // Single pipeline write: player record + leaderboard score + answer audit
+  // + pending_results entry — replaces 5 serial round-trips with 1.
+  const pendingPayload = JSON.stringify({
     playerId, correct, partial,
     correctIndices: q.correctIndices,
     points, totalScore: player.score,
-  }));
-  await redis.expire(`pending_results:${code}`, 300);
+  });
+  await writeAnswerResult(
+    code, qi, playerId, player.socketId,
+    player, selectedIndices.join(','), timeLeft, pendingPayload
+  );
 
   return { correct, partial, correctIndices: q.correctIndices, points, totalScore: player.score };
 }

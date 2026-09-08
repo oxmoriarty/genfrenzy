@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hash, User, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { getSocket, saveSession } from '@/lib/socket';
+import { applyRestoreState } from '@/lib/restoreState';
 import { useGameStore } from '@/store/gameStore';
 import { resumeAudio } from '@/lib/sounds';
 
@@ -39,7 +40,21 @@ export default function LandingScreen() {
         saveSession({ role: 'player', code: c, playerId: res.playerId, username: u });
         setPlayerInfo(res.playerId, u, c, res.quizTheme, res.quizDescription || '');
         setPlayerCount(res.playerCount);
-        setPhase('lobby');
+
+        if (res.lateJoin && res.currentState) {
+          const st = res.currentState;
+          if (st.quizStatus === 'stale' || st.quizStatus === 'ended') {
+            // Quiz ended right as we joined — show a friendly error
+            setLoading(false);
+            setError('This quiz has just ended. Please wait for the next one.');
+            return;
+          }
+          // Quiz is in progress — apply the current state (question, timer,
+          // leaderboard, etc.) so the player lands exactly where everyone else is.
+          applyRestoreState(useGameStore.getState(), st);
+        } else {
+          setPhase('lobby');
+        }
       } else {
         setError(res.error || 'Could not join quiz');
       }
@@ -47,7 +62,7 @@ export default function LandingScreen() {
   }, [code, username, setPhase, setPlayerInfo, setPlayerCount]);
 
   return (
-    <div className="relative flex items-center justify-center min-h-screen overflow-hidden"
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden"
       style={{ background: '#0A0A0F' }}>
       <div className="mesh-bg" />
       <div className="dot-grid" style={{ opacity: .55 }} />
@@ -60,7 +75,7 @@ export default function LandingScreen() {
         <motion.div key={i}
           animate={{ y:[0,-10,0], opacity:[.6,.95,.6] }}
           transition={{ duration:6+i*2, repeat:Infinity, ease:'easeInOut', delay:o.delay }}
-          className="absolute rounded-full pointer-events-none blur-3xl"
+          className="absolute rounded-full blur-3xl pointer-events-none"
           style={{ width:o.w, height:o.h, background:o.c,
             ...Object.fromEntries(['top','right','bottom','left']
               .filter(k => k in o).map(k => [k,(o as any)[k]])) }} />
@@ -90,7 +105,7 @@ export default function LandingScreen() {
         {/* Form */}
         <motion.div initial={{ opacity:0, y:22, scale:.97 }} animate={{ opacity:1, y:0, scale:1 }}
           transition={{ delay:.25, duration:.4, ease:'easeOut' }}>
-          <div className="p-6 rounded-2xl"
+          <div className="rounded-2xl p-6"
             style={{ background:'#18181F', border:'1px solid #25252E',
               boxShadow:'0 2px 0 rgba(255,255,255,.04), 0 24px 64px rgba(0,0,0,.65)' }}>
             <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -101,7 +116,7 @@ export default function LandingScreen() {
                 <div style={{ position:'relative' }}>
                   <Hash size={14} style={{ position:'absolute', left:14, top:'50%',
                     transform:'translateY(-50%)', color:'#3A3A48', pointerEvents:'none' }} />
-                  <input className="font-mono field" placeholder="ENTER CODE"
+                  <input className="field font-mono" placeholder="ENTER CODE"
                     value={code} maxLength={8} autoComplete="off"
                     style={{ paddingLeft:40, fontSize:17, letterSpacing:'.2em', textTransform:'uppercase' }}
                     onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}

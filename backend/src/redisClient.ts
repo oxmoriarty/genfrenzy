@@ -1,26 +1,35 @@
 import Redis from 'ioredis';
 
 const URL = process.env.REDIS_URL || 'redis://localhost:6379';
-export const redis    = new Redis(URL, { maxRetriesPerRequest: 3 });
-export const redisSub = new Redis(URL, { maxRetriesPerRequest: 3 });
 
-const QUIZ_TTL    = 7200;  // 2 hours — covers lobby wait + full quiz duration
-const SESSION_TTL = 7200;  // matches quiz TTL — session shouldn't outlive the quiz it belongs to
+// Single Redis connection — redisSub was created but never used anywhere,
+// so it's removed to avoid holding an unnecessary persistent connection.
+export const redis = new Redis(URL, {
+  maxRetriesPerRequest: 3,
+  // Keep-alive prevents the connection from being dropped by the network
+  // between quiz sessions (important on Render's free tier).
+  keepAlive: 10000,
+  // Reduce reconnect noise in logs
+  reconnectOnError: (err) => {
+    const targetError = 'READONLY';
+    return err.message.includes(targetError);
+  },
+});
+
+const QUIZ_TTL    = 7200;
+const SESSION_TTL = 7200;
 
 export const K = {
-  quiz:        (code: string) => `quiz:${code}`,
-  player:      (code: string, id: string) => `player:${code}:${id}`,
-  players:     (code: string) => `players:${code}`,        // set of player IDs for this quiz
-  leaderboard: (code: string) => `lb:${code}`,              // sorted set: score by playerId
-  answers:     (code: string, qi: number) => `answers:${code}:${qi}`,
-  // Session is now keyed by PLAYER ID (stable across reconnects), not socket.id
-  // (which changes on every reconnect by design — keying by it was the root
-  // cause of players losing their session after a disconnect/reconnect).
+  quiz:          (code: string) => `quiz:${code}`,
+  player:        (code: string, id: string) => `player:${code}:${id}`,
+  players:       (code: string) => `players:${code}`,
+  leaderboard:   (code: string) => `lb:${code}`,
+  answers:       (code: string, qi: number) => `answers:${code}:${qi}`,
   playerSession: (playerId: string) => `session:player:${playerId}`,
   adminSession:  (code: string) => `session:admin:${code}`,
 };
 
-// ─── Quiz ───────────────────────────────────────────────────────────────────
+// ─── Quiz ─────────────────────────────────────────────────────────────────────
 export async function getQuiz(code: string) {
   const d = await redis.get(K.quiz(code));
   return d ? JSON.parse(d) : null;
@@ -29,27 +38,20 @@ export async function setQuiz(code: string, q: any, ttl = QUIZ_TTL) {
   await redis.set(K.quiz(code), JSON.stringify(q), 'EX', ttl);
 }
 
-// ─── Player ─────────────────────────────────────────────────────────────────
+// ─── Player ───────────────────────────────────────────────────────────────────
 export async function getPlayer(code: string, id: string) {
   const d = await redis.get(K.player(code, id));
   return d ? JSON.parse(d) : null;
 }
 export async function setPlayer(code: string, id: string, player: any, ttl = QUIZ_TTL) {
-  await redis.set(K.player(code, id), JSON.stringify(player), 'EX', ttl);
-  await redis.sadd(K.players(code), id);
-  await redis.expire(K.players(code), ttl);
+  const pipeline = redis.pipeline();
+  pipeline.set(K.player(code, id), JSON.stringify(player), 'EX', ttl);
+  pipeline.sadd(K.players(code), id);
+  pipeline.expire(K.players(code), ttl);
+  await pipeline.exec();
 }
 
-// Batch version of setPlayer — writes any number of players in a SINGLE
-// network round-trip via ioredis pipelining, instead of 3 round-trips PER
-// PLAYER (SET + SADD + EXPIRE) done sequentially. This is the key
-// optimization for handling hundreds of concurrent players: a loop that
-// calls setPlayer() once per player for 500 players means 500 sequential
-// awaits (1500 Redis commands, one network round-trip at a time) — with
-// typical managed-Redis latency that alone can take several seconds and
-// stall every phase transition for everyone. Pipelining sends all commands
-// at once and waits for all responses together, cutting that to a single
-// round-trip regardless of player count.
+// Batch-write multiple players in a single Redis round-trip.
 export async function setPlayersBatch(
   code: string, players: { id: string; data: any }[], ttl = QUIZ_TTL
 ) {
@@ -62,80 +64,91 @@ export async function setPlayersBatch(
   pipeline.expire(K.players(code), ttl);
   await pipeline.exec();
 }
+
 export async function getAllPlayers(code: string) {
   const ids = await redis.smembers(K.players(code));
   if (!ids.length) return [];
   const raw = await redis.mget(ids.map(id => K.player(code, id)));
   return raw.filter(Boolean).map(d => JSON.parse(d as string));
 }
+
 export async function removePlayer(code: string, id: string) {
-  await redis.del(K.player(code, id));
-  await redis.srem(K.players(code), id);
-  await redis.zrem(K.leaderboard(code), id);
+  const pipeline = redis.pipeline();
+  pipeline.del(K.player(code, id));
+  pipeline.srem(K.players(code), id);
+  pipeline.zrem(K.leaderboard(code), id);
+  await pipeline.exec();
 }
 
-// ─── Leaderboard (sorted set: member=playerId, score=points) ────────────────
+// ─── Leaderboard ──────────────────────────────────────────────────────────────
 export async function updateScore(code: string, playerId: string, score: number, ttl = QUIZ_TTL) {
-  await redis.zadd(K.leaderboard(code), score, playerId);
-  await redis.expire(K.leaderboard(code), ttl);
+  const pipeline = redis.pipeline();
+  pipeline.zadd(K.leaderboard(code), score, playerId);
+  pipeline.expire(K.leaderboard(code), ttl);
+  await pipeline.exec();
 }
 export async function getLeaderboard(code: string) {
-  // Returns flat array: [playerId1, score1, playerId2, score2, ...] sorted desc
   return redis.zrevrange(K.leaderboard(code), 0, -1, 'WITHSCORES');
 }
 
-// ─── Answers (for export/audit) ──────────────────────────────────────────────
+// ─── Answers ──────────────────────────────────────────────────────────────────
 export async function recordAnswer(
   code: string, qi: number, playerId: string, selected: string, timeLeft: number, ttl = QUIZ_TTL
 ) {
-  await redis.hset(K.answers(code, qi), playerId, JSON.stringify({ selected, timeLeft, at: Date.now() }));
-  await redis.expire(K.answers(code, qi), ttl);
+  const pipeline = redis.pipeline();
+  pipeline.hset(K.answers(code, qi), playerId, JSON.stringify({ selected, timeLeft, at: Date.now() }));
+  pipeline.expire(K.answers(code, qi), ttl);
+  await pipeline.exec();
 }
 
-// ─── Sessions — keyed by stable identity (playerId / quiz code for admin) ───
-// NOT keyed by socket.id, since socket.id changes on every reconnect.
-interface PlayerSessionData {
-  role: 'player';
-  code: string;
-  playerId: string;
-  username: string;
+// ─── Pipelined answer handler write ──────────────────────────────────────────
+// Combines setPlayer + updateScore + recordAnswer + pending_results hset
+// into a single pipeline — reduces handleAnswer from 5 serial Redis
+// round-trips down to 1 regardless of Upstash network latency.
+export async function writeAnswerResult(
+  code: string, qi: number, playerId: string, socketId: string,
+  player: any, selected: string, timeLeft: number,
+  pendingPayload: string, ttl = QUIZ_TTL
+) {
+  const pipeline = redis.pipeline();
+  // Player record
+  pipeline.set(K.player(code, playerId), JSON.stringify(player), 'EX', ttl);
+  pipeline.sadd(K.players(code), playerId);
+  pipeline.expire(K.players(code), ttl);
+  // Score sorted set
+  pipeline.zadd(K.leaderboard(code), player.score, playerId);
+  pipeline.expire(K.leaderboard(code), ttl);
+  // Answer audit
+  pipeline.hset(K.answers(code, qi), playerId, JSON.stringify({ selected, timeLeft, at: Date.now() }));
+  pipeline.expire(K.answers(code, qi), ttl);
+  // Pending result for synchronized flush
+  pipeline.hset(`pending_results:${code}`, socketId, pendingPayload);
+  pipeline.expire(`pending_results:${code}`, 300);
+  await pipeline.exec();
 }
-interface AdminSessionData {
-  role: 'admin';
-  code: string;
-}
+
+// ─── Sessions ──────────────────────────────────────────────────────────────────
+interface PlayerSessionData { role: 'player'; code: string; playerId: string; username: string; }
+interface AdminSessionData  { role: 'admin'; code: string; }
 type SessionData = PlayerSessionData | AdminSessionData;
 
 export async function setSession(socketId: string, data: SessionData, ttl = SESSION_TTL) {
-  // Maintain a socketId -> identity pointer (short-lived, just for the
-  // current connection's disconnect handler to know who it was), AND the
-  // durable identity-keyed record used for all restore/reconnect lookups.
-  await redis.set(`socketptr:${socketId}`, JSON.stringify(data), 'EX', ttl);
+  const pipeline = redis.pipeline();
+  pipeline.set(`socketptr:${socketId}`, JSON.stringify(data), 'EX', ttl);
   if (data.role === 'player') {
-    await redis.set(K.playerSession(data.playerId), JSON.stringify(data), 'EX', ttl);
+    pipeline.set(K.playerSession(data.playerId), JSON.stringify(data), 'EX', ttl);
   } else {
-    await redis.set(K.adminSession(data.code), JSON.stringify(data), 'EX', ttl);
+    pipeline.set(K.adminSession(data.code), JSON.stringify(data), 'EX', ttl);
   }
+  await pipeline.exec();
 }
-
-// Looks up a session by the CURRENT socket.id — used inside a handler that
-// only has access to `socket.id` (e.g. submit_answer, disconnect).
 export async function getSession(socketId: string): Promise<SessionData | null> {
   const d = await redis.get(`socketptr:${socketId}`);
   return d ? JSON.parse(d) : null;
 }
-
 export async function deleteSession(socketId: string) {
   await redis.del(`socketptr:${socketId}`);
-  // Note: does NOT delete the durable playerSession/adminSession record —
-  // that record must survive across reconnects. It expires naturally via
-  // TTL, or is explicitly cleared via clearPlayerSession/clearAdminSession
-  // when the player/admin truly leaves (quiz ended + grace period passed).
 }
-
-// Durable lookup by playerId — used for reconnect/restore flows where we
-// already know the playerId (e.g. from the client's localStorage) and need
-// to confirm it's still a valid, live session.
 export async function getPlayerSession(playerId: string): Promise<PlayerSessionData | null> {
   const d = await redis.get(K.playerSession(playerId));
   return d ? JSON.parse(d) : null;
@@ -144,9 +157,5 @@ export async function getAdminSession(code: string): Promise<AdminSessionData | 
   const d = await redis.get(K.adminSession(code));
   return d ? JSON.parse(d) : null;
 }
-export async function clearPlayerSession(playerId: string) {
-  await redis.del(K.playerSession(playerId));
-}
-export async function clearAdminSession(code: string) {
-  await redis.del(K.adminSession(code));
-}
+export async function clearPlayerSession(playerId: string) { await redis.del(K.playerSession(playerId)); }
+export async function clearAdminSession(code: string)      { await redis.del(K.adminSession(code)); }
