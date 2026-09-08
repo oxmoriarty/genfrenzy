@@ -78,19 +78,10 @@ export function register(io: Server, socket: Socket) {
 
   // ── Admin: dashboard data ──────────────────────────────────────────────────
   socket.on('admin_get_dashboard', async (data: any, cb: Function) => {
-    // Fetch quiz and players in parallel, then reuse players list for
-    // buildLeaderboard — halves the Redis reads vs the sequential approach.
-    // quiz doesn't need to be fetched if it wasn't found on first check,
-    // so we do a fast existence check before the full parallel fetch.
     const quiz: Quiz = await getQuiz(data.code);
     if (!quiz) return cb({ success: false, error: 'Not found' });
-
     const players: Player[] = await getAllPlayers(data.code);
-    // Pass the already-fetched players list so buildLeaderboard doesn't
-    // call getAllPlayers a second time — eliminates 1 SMEMBERS + MGET×N
-    // on every admin dashboard poll (which runs every 5 seconds).
-    const lb = await buildLeaderboard(data.code, players);
-
+    const lb = await buildLeaderboard(data.code);
     cb({
       success: true,
       quiz: {
@@ -98,14 +89,12 @@ export function register(io: Server, socket: Socket) {
         currentQuestionIndex: quiz.currentQuestionIndex,
         totalQuestions: quiz.questions.length, code: quiz.code,
       },
-      // Only return fields the admin UI actually renders — omit
-      // questionResults (large array) from the poll response to reduce
-      // payload size. Export uses a separate admin_export_data event.
       players: players.map(p => ({
         id: p.id, username: p.username, score: p.score,
         correctAnswers: p.correctAnswers,
         partialAnswers: p.partialAnswers || 0,
         incorrectAnswers: p.incorrectAnswers || 0,
+        questionResults: p.questionResults || [],
       })),
       leaderboard: lb,
     });
@@ -129,7 +118,7 @@ export function register(io: Server, socket: Socket) {
     const quiz: Quiz = await getQuiz(data.code);
     if (!quiz) return cb({ success: false, error: 'Quiz not found' });
     const players: Player[] = await getAllPlayers(data.code);
-    const lb = await buildLeaderboard(data.code, players);
+    const lb = await buildLeaderboard(data.code);
     const rankMap = new Map(lb.map(e => [e.playerId, e.rank]));
     const exportData = players.map(p => ({
       rank: rankMap.get(p.id) || 0,
