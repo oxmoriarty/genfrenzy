@@ -16,7 +16,7 @@ cd frontend && npm install && npm run dev  # → http://localhost:3000
 ```
 
 - **Players:** http://localhost:3000  
-- **Admin:**   http://localhost:3000/admin  (password: `genfrenzy2024`)
+- **Admin:**   http://localhost:3000/admin
 
 ---
 
