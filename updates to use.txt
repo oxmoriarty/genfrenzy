@@ -1,0 +1,51 @@
+I want you to make some changes on some pages.
+
+
+1. Lobby page:
+
+Remove the "Connected. Waiting for host" text above "TODAY'S QUIZ" and the container it is in. Then change the text "TODAY'S QUIZ" to "TODAY'S THEME".
+
+
+2. Question- Preview:
+
+Remove the "G" logo and the blue, rounded corners box it's in. Remove it across every other page it is on also.
+Remove the short blue vertical line beside "READ CAREFULLY" on the left, and change "READ CAREFULLY" to "READ THE QUESTION"
+
+
+3. Question- Options
+Remove the "G" logo and the blue, rounded corners box it's in. Remove it across every other page it is on also.
+
+Remove the short blue vertical line beside "CHOOSE THE CORRECT ANSWER" on the left.
+When a player selects an answer, a text is shown below the options that says "Answer locked — waiting for results…". Change it to "Waiting for results…"
+
+
+4. Answer Correct:
+Remove the yellow flash lightning icon beside the points gotten for that round text.
+
+
+5. Answer Partial:
+You made this for multiple choice questions. It should be exactly the same as the Answer correct page for questions with one correct answer. Answer correct page should be the same for every quesion either multiple choice or not. No extra Answer partial page for multiple choice questions.
+
+
+6. Leaderboard (Mid):
+1st, 2nd and 3rd on the leaderboard should not show separately horizontally for the leaderboard shown mid game. All ranks including top 3(1st, 2nd, and 3rd) should be shown vertically along with 4th to the last on the leaderboard. Only the final leaderboard should show the 1st, 2nd and 3rd separately horizontally.
+
+
+7. Leaderboard (Final):
+Remove the icons(Medal and trophy) above the 2nd and 3nd rank circles on the horizontal section of the leaderboard for top 3. Leave just the one(Crown) above the 1st rank circle.
+
+
+8. Admin Panel:
+Remove the white flash lightning logo and the blue, rounded corners box it's in above the "Admin Panel" text. Change "Admin Panel" to "Admin Dashboard" and change the text "GenFrenzy Quiz Dashboard" below it to "Login to create a quiz". Remove it across every other page it is on.
+
+Remove the text "Default: genfrenzy2024" below the form for the Admin to enter the password and the button to submit it.
+
+9. Admin- Create:
+Remove the white flash lightning icon and the blue, rounded corners box it's in beside the "Create Quiz" text.
+
+10. Admin- Dashboard:
+Remove the white flash lightning icon and the blue, rounded corners box it's in beside the "Admin Dashboard" text.
+
+==============
+
+Excel cannot open the file 'Genfrenzy_7RM6WZ_Results.xslx' because the file format or file extension is not valid. Verify hat the file has not been corrupted and that the file extension matches the format of the file.

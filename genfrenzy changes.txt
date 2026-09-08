@@ -1,0 +1,72 @@
+git add backend/src/redisClient.ts backend/src//types/index.ts backend/src/quizEngine.ts backend/src/socketHandlers/index.ts frontend/src/components/quiz/LandingScreen.tsx frontend/src/lib/socket.ts frontend/src/lib/useSocketEvents.ts frontend/src/store/gameStore.ts
+
+
+git add backend/src/types/index.ts backend/src/quizEngine.ts backend/src/socketHandlers/index.ts frontend/src/types/index.ts frontend/src/store/gameStore.ts frontend/src/lib/useSocketEvents.ts frontend/src/components/quiz/LobbyScreen.tsx frontend/src/app/admin/page.tsx
+
+I want you to make some changes on some pages.
+
+
+1. Landing page:
+Change the font of "GenFrenzy". Just thst leave te color and every other thing on that page alone.
+
+
+2. Lobby page:
+Remove the "connected. waiting for host" text above "TODAY'S QUIZ" and the container it is in.
+Change the text "TODAY'S QUIZ" to "THEME".
+Reduce the theme's text font(Entered by the Admin) size a bit. It is too big. Change the font and every current text with that same font to a sleeker, better one (Sleek and simple, not complicated. Use the same font, color and size across all pages).
+
+
+3. Question- Preview:
+
+Remove the "G" logo and the rounded corners box it's in. Leave just "Q1/8"
+Remove the short blue vertical line beside "READ CAREFULLY" on the left, and change "READ CAREFULLY" to "READ THE QUESTION"
+
+
+4. Question- Options
+Remove the "G" logo and the rounded corners box it's in. Leave just "Q1/8"
+Remove the short blue vertical line beside "CHOOSE THE CORRECT ANSWER" on the left.
+When a player selects an answer, a text is shown below the options that says "Answer locked — waiting for results…". Change it to "Answer locked. Waiting for results…"
+
+
+5. Answer Correct:
+Remove the yellow flash lightning icon beside "+850 pts" on the left.
+
+
+6. Answer Partial:
+You made this for multiple choice questions. It should be exactly the same as the Answer correct page for questions with one correct answer. Answer correct page should be the same for every quesion either multiple choice or not. No extra Answer partial page for multiple choice questions.
+
+
+7. Leaderboard (Mid):
+1st, 2nd and 3rd on the leaderboard should not show separately horizontally for the leaderboard shown mid game. All should be shown vertically along with 4th to the last on the leaderboard. Only the final leaderboard should show the 1st, 2nd and 3rd separately horizontally.
+
+Remove the chart emoji and "STANDINGS" text beside it above.
+
+Remove the check mark emoji beside "Your position".
+
+
+8. Leaderboard (Final):
+Remove the cup/trophy emoji beside "FINAL RESULTS" text.
+
+Remove the yellow flash lightning emoji above the 2nd rank circle on the horizontal section of the leaderboard for top 3.
+
+Remove the fire emoji above the 3nd rank circle on the horizontal section of the leaderboard for top 3.
+
+Instead of putting the first two letters(in capital letters) of the 1st, 2nd and 3rd players in the circles shown on the horizontal part of the leaderboard for top 3, use nice, simple and sleek Avatars/Use icons that is fitting for a web quiz game. DO NOT USE EMOJIS. GET THEM FROM A NICE AND SUITABLE ICON LIBRARY. Use the same/similar icons, but different colors for each of the 3 ranks.
+
+Remove the check mark emoji beside "Your position".
+
+Achivements:
+Change the icons for each achievements from plain emojis to proper, sleek icons that fits from a nice icon library. DO NOT USE PLAIN EMOJIS AS ICONS FOR ANYONE OF THE ACHIEVEMENTS. Replace the first two letters of the players username in the circle for each rank with nice, simple and sleek Avatars/Use icons that is fitting for a web quiz game. DO NOT USE EMOJIS. GET THEM FROM A NICE AND SUITABLE ICON LIBRARY. Use the same/similar icons, but different colors for each achievements.
+
+Admin Panel:
+Remove the yellow flash lightning logo and the rounded corners box it's in above the "Admin Panel" text. Change "Admin Panel" to "Admin Dashboard" and remove the text "GenFrenzy Quiz Dashboard" below it.
+
+Remove the text "Default: genfrenzy2024" below the form for the Admin to enter the password and the button to submit it.
+
+Admin- Create:
+From the preview you gave, there is no option for the Admin to upload image with each questions. Implement it if it's not on the app.
+
+Admin- Dashboard:
+Remove the yellow flash lightning logo and the rounded corners box it's in above the "Admin Dashboard" text.
+
+Remove the chart logo beside "Live Rankings" text.

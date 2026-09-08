@@ -1,0 +1,51 @@
+I got this error in the Admin page(frontend/src/app/admin/page.tsx) code you just gave me:
+
+
+
+Function lacks ending return statement and return type does not include 'undefined'.
+
+Unterminated string literal.
+
+',' expected.
+
+Argument of type 'string' is not assignable to parameter of type 'number'.
+
+Unterminated string literal.
+
+',' expected.
+
+Cannot find name 's'.
+
+Cannot find name 'esc'.
+
+Unterminated string literal.
+
+Unterminated string literal.
+
+Cannot find name 'quizCode'.
+
+Cannot find name 'theme'.
+
+Cannot find name 'sorted'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'sorted'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'sorted'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'questions'.
+
+Cannot find name 'quizCode'.
+
+Declaration or statement expected.

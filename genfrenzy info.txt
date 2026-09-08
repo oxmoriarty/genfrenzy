@@ -1,0 +1,94 @@
+PS C:\Users\Engr sam\Documents\Genlayer\genfrenzy> docker run -d -p 6379:6379 redis:alpine
+0e59c721b5c769867a74981bfccfe0aa5cfd50ddbd69ad4c7f768037254f6230
+
+PS C:\Users\Engr sam\Documents\Genlayer\genfrenzy\frontend> npm install
+npm warn deprecated next@14.2.3: This version has a security vulnerability. Please upgrade to a patched version. See https://nextjs.org/blog/security-update-2025-12-11 for more details.
+
+added 121 packages, and audited 122 packages in 2m
+
+24 packages are looking for funding
+  run `npm fund` for details
+
+2 vulnerabilities (1 moderate, 1 critical)
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+PS C:\Users\Engr sam\Documents\Genlayer\genfrenzy\frontend> 
+
+backend/.env.example frontend/.env.local.example .gitignore NEKK.txt
+        
+       
+docker start fervent_agnesi
+docker ps
+
+https://genfrenzy-backend.onrender.com
+
+redis-cli --tls -u rediss://default:gQAAAAAAAYBkAAIgcDFhMGNhMjA2NDMwMjk0MmU5YmFkZTBiN2ZjYTdmZTUzYw@together-deer-98404.upstash.io:6379
+
+
+https://github.com/oxmoriarty/genfrenzy.git
+======================
+
+flyctl secrets set REDIS_URL="redis-cli --tls -u redis://default:gQAAAAAAAYBkAAIgcDFhMGNhMjA2NDMwMjk0MmU5YmFkZTBiN2ZjYTdmZTUzYw@together-deer-98404.upstash.io:6379" ADMIN_PASSWORD=".loremIpsum123." FRONTEND_URL="https://your-vercel-url.vercel.app"
+
+
+flyctl secrets set REDIS_URL="rediss://default:gQAAAAAAAYBkAAIgcDFhMGNhMjA2NDMwMjk0MmU5YmFkZTBiN2ZjYTdmZTUzYw@together-deer-98404.upstash.io:6379" ADMIN_PASSWORD=".loremIpsum123." FRONTEND_URL="https://your-vercel-url.vercel.app"
+
+======================
+--> Build Summary:  (​)
+--> Building image done
+image: registry.fly.io/genfrenzy-backend:deployment-01KTQHRDENST5NAPRGBD1YKTSY
+image size: 69 MB
+
+Watch your deployment at https://fly.io/apps/genfrenzy-backend/monitoring
+
+Provisioning ips for genfrenzy-backend
+  Dedicated ipv6: 2a09:8280:1::125:211:0
+  Shared ipv4: 66.241.125.48
+  Add a dedicated ipv4 with: fly ips allocate-v4
+
+This deployment will:
+ * create 2 "app" machines
+
+No machines in group app, launching a new machine
+Creating a second machine for high availability and zero downtime deployments.
+To disable this, set "min_machines_running = 0" in your fly.toml.
+Finished launching new machines
+-------
+ ✔ Machine 3d8d0543be9338 [app] update finished: success
+-------
+Checking DNS configuration for genfrenzy-backend.fly.dev
+✓ DNS configuration verified
+
+Visit your newly deployed app at https://genfrenzy-backend.fly.dev/
+Genlayerfrenzy26
+https://genfrenzy.vercel.app/
+genfrenzy2024
+
+flyctl secrets set FRONTEND_URL="https://genfrenzy-abc123.vercel.app"
+flyctl secrets set FRONTEND_URL="https://genfrenzy.vercel.app"
+flyctl secrets set ADMIN_PASSWORD="Genlayerfrenzy26"
+===================
+
+Old dockerfile:
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY package.json ./
+EXPOSE 4000
+CMD ["node", "dist/index.js"]
